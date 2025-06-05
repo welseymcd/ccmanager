@@ -63,13 +63,13 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree, onExit}) =
 			if (session) {
 				switch (session.state) {
 					case 'busy':
-						status = ' [●]';
+						status = ' [🔴 Active]';
 						break;
 					case 'waiting_input':
-						status = ' [◯]';
+						status = ' [🟠 Waiting]';
 						break;
 					case 'idle':
-						status = ' [○]';
+						status = ' [🔵 Idle]';
 						break;
 				}
 			}
@@ -142,7 +142,7 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree, onExit}) =
 
 			<Box marginTop={1} flexDirection="column">
 				<Text dimColor>
-					Status: ● Running  ◯ Waiting  ○ Idle
+					Status: 🔴 Active  🟠 Waiting  🔵 Idle
 				</Text>
 				<Text dimColor>
 					Controls: ↑↓ Navigate  Enter Select  Ctrl+Q Exit
