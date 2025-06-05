@@ -12,7 +12,8 @@ export interface Session {
 	worktreePath: string;
 	process: IPty;
 	state: 'idle' | 'busy' | 'waiting_input';
-	output: string[];
+	output: string[]; // Recent output for state detection
+	outputHistory: Buffer[]; // Full output history as buffers
 	lastActivity: Date;
 	isActive: boolean;
 }

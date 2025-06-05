@@ -19,7 +19,34 @@ const Session: React.FC<SessionProps> = ({session, sessionManager, onReturnToMen
 		// Clear screen when entering session
 		stdout.write('\x1B[2J\x1B[H');
 
-		// Mark session as active
+		// Handle session restoration
+		const handleSessionRestore = (restoredSession: SessionType) => {
+			if (restoredSession.id === session.id) {
+				// Replay all buffered output, but skip the initial clear if present
+				for (let i = 0; i < restoredSession.outputHistory.length; i++) {
+					const buffer = restoredSession.outputHistory[i];
+					if (!buffer) continue;
+					
+					const str = buffer.toString('utf8');
+					
+					// Skip clear screen sequences at the beginning
+					if (i === 0 && (str.includes('\x1B[2J') || str.includes('\x1B[H'))) {
+						// Skip this buffer or remove the clear sequence
+						const cleaned = str.replace(/\x1B\[2J/g, '').replace(/\x1B\[H/g, '');
+						if (cleaned.length > 0) {
+							stdout.write(Buffer.from(cleaned, 'utf8'));
+						}
+					} else {
+						stdout.write(buffer);
+					}
+				}
+			}
+		};
+
+		// Listen for restore event first
+		sessionManager.on('sessionRestore', handleSessionRestore);
+
+		// Mark session as active (this will trigger the restore event)
 		sessionManager.setSessionActive(session.worktreePath, true);
 
 		// Listen for session data events
@@ -55,6 +82,7 @@ const Session: React.FC<SessionProps> = ({session, sessionManager, onReturnToMen
 			sessionManager.setSessionActive(session.worktreePath, false);
 			
 			// Remove event listeners
+			sessionManager.off('sessionRestore', handleSessionRestore);
 			sessionManager.off('sessionData', handleSessionData);
 			sessionManager.off('sessionExit', handleSessionExit);
 			stdout.off('resize', handleResize);

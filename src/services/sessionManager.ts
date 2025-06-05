@@ -35,6 +35,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			process: ptyProcess,
 			state: 'idle',
 			output: [],
+			outputHistory: [],
 			lastActivity: new Date(),
 			isActive: false,
 		};
@@ -51,7 +52,21 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	private setupBackgroundHandler(session: Session): void {
 		// This handler always runs for all data
 		session.process.onData((data: string) => {
-			// Always store output for state detection
+			// Store in output history as Buffer
+			const buffer = Buffer.from(data, 'utf8');
+			session.outputHistory.push(buffer);
+			
+			// Limit memory usage - keep max 10MB of output history
+			const MAX_HISTORY_SIZE = 10 * 1024 * 1024; // 10MB
+			let totalSize = session.outputHistory.reduce((sum, buf) => sum + buf.length, 0);
+			while (totalSize > MAX_HISTORY_SIZE && session.outputHistory.length > 0) {
+				const removed = session.outputHistory.shift();
+				if (removed) {
+					totalSize -= removed.length;
+				}
+			}
+			
+			// Also store for state detection
 			session.output.push(data);
 			// Keep only last 100 chunks for state detection
 			if (session.output.length > 100) {
@@ -80,6 +95,11 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		const session = this.sessions.get(worktreePath);
 		if (session) {
 			session.isActive = active;
+			
+			// If becoming active, emit a restore event with the output history
+			if (active && session.outputHistory.length > 0) {
+				this.emit('sessionRestore', session);
+			}
 		}
 	}
 
