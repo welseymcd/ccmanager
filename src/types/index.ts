@@ -14,6 +14,7 @@ export interface Session {
 	state: 'idle' | 'busy' | 'waiting_input';
 	output: string[];
 	lastActivity: Date;
+	isActive: boolean;
 }
 
 export interface SessionManager {

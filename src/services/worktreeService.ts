@@ -75,4 +75,37 @@ export class WorktreeService {
 	isGitRepository(): boolean {
 		return existsSync(path.join(this.rootPath, '.git'));
 	}
+
+	createWorktree(worktreePath: string, branch: string): {success: boolean; error?: string} {
+		try {
+			// Check if branch exists
+			let branchExists = false;
+			try {
+				execSync(`git rev-parse --verify ${branch}`, {
+					cwd: this.rootPath,
+					encoding: 'utf8',
+				});
+				branchExists = true;
+			} catch {
+				// Branch doesn't exist
+			}
+
+			// Create the worktree
+			const command = branchExists 
+				? `git worktree add "${worktreePath}" "${branch}"`
+				: `git worktree add -b "${branch}" "${worktreePath}"`;
+			
+			execSync(command, {
+				cwd: this.rootPath,
+				encoding: 'utf8',
+			});
+
+			return {success: true};
+		} catch (error: any) {
+			return {
+				success: false,
+				error: error.message || 'Failed to create worktree',
+			};
+		}
+	}
 }

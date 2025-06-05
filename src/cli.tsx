@@ -4,7 +4,7 @@ import {render} from 'ink';
 import meow from 'meow';
 import App from './components/App.js';
 
-const cli = meow(`
+meow(`
 	Usage
 	  $ ccmanager
 

@@ -84,10 +84,14 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree, onExit}) =
 			};
 		});
 
-		// Add exit option
+		// Add menu options
 		menuItems.push({
 			label: '─────────────',
 			value: 'separator',
+		});
+		menuItems.push({
+			label: 'New Worktree',
+			value: 'new-worktree',
 		});
 		menuItems.push({
 			label: 'Exit',
@@ -108,6 +112,9 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree, onExit}) =
 			onExit();
 		} else if (item.value === 'separator') {
 			// Do nothing for separator
+		} else if (item.value === 'new-worktree') {
+			// Handle in parent component
+			onSelectWorktree({path: '', branch: '', isMainWorktree: false, hasSession: false});
 		} else if (item.worktree) {
 			onSelectWorktree(item.worktree);
 		}

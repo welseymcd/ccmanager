@@ -1,13 +1,15 @@
 import React, {useEffect, useState} from 'react';
 import {useInput, useStdout} from 'ink';
 import {Session as SessionType} from '../types/index.js';
+import {SessionManager} from '../services/sessionManager.js';
 
 interface SessionProps {
 	session: SessionType;
+	sessionManager: SessionManager;
 	onReturnToMenu: () => void;
 }
 
-const Session: React.FC<SessionProps> = ({session, onReturnToMenu}) => {
+const Session: React.FC<SessionProps> = ({session, sessionManager, onReturnToMenu}) => {
 	const {stdout} = useStdout();
 	const [isExiting, setIsExiting] = useState(false);
 
@@ -17,17 +19,26 @@ const Session: React.FC<SessionProps> = ({session, onReturnToMenu}) => {
 		// Clear screen when entering session
 		stdout.write('\x1B[2J\x1B[H');
 
-		const handleData = (data: string) => {
-			stdout.write(data);
+		// Mark session as active
+		sessionManager.setSessionActive(session.worktreePath, true);
+
+		// Listen for session data events
+		const handleSessionData = (activeSession: SessionType, data: string) => {
+			// Only handle data for our session
+			if (activeSession.id === session.id && !isExiting) {
+				stdout.write(data);
+			}
 		};
 
-		const handleExit = () => {
-			setIsExiting(true);
-			onReturnToMenu();
+		const handleSessionExit = (exitedSession: SessionType) => {
+			if (exitedSession.id === session.id) {
+				setIsExiting(true);
+				onReturnToMenu();
+			}
 		};
 
-		session.process.onData(handleData);
-		session.process.onExit(handleExit);
+		sessionManager.on('sessionData', handleSessionData);
+		sessionManager.on('sessionExit', handleSessionExit);
 
 		// Handle terminal resize
 		const handleResize = () => {
@@ -40,10 +51,15 @@ const Session: React.FC<SessionProps> = ({session, onReturnToMenu}) => {
 		stdout.on('resize', handleResize);
 
 		return () => {
-			// node-pty doesn't have off method, cleanup is handled by process exit
+			// Mark session as inactive
+			sessionManager.setSessionActive(session.worktreePath, false);
+			
+			// Remove event listeners
+			sessionManager.off('sessionData', handleSessionData);
+			sessionManager.off('sessionExit', handleSessionExit);
 			stdout.off('resize', handleResize);
 		};
-	}, [session, stdout, onReturnToMenu]);
+	}, [session, sessionManager, stdout, onReturnToMenu, isExiting]);
 
 	useInput((char, key) => {
 		if (isExiting) return;

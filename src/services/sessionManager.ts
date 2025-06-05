@@ -36,24 +36,11 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			state: 'idle',
 			output: [],
 			lastActivity: new Date(),
+			isActive: false,
 		};
 
-		// Track output for state detection
-		ptyProcess.onData((data: string) => {
-			session.output.push(data);
-			// Keep only last 100 lines for state detection
-			if (session.output.length > 100) {
-				session.output.shift();
-			}
-			session.lastActivity = new Date();
-			this.detectState(session);
-			this.emit('sessionOutput', session, data);
-		});
-
-		ptyProcess.onExit(() => {
-			this.destroySession(worktreePath);
-			this.emit('sessionExit', session);
-		});
+		// Set up persistent background data handler for state detection
+		this.setupBackgroundHandler(session);
 
 		this.sessions.set(worktreePath, session);
 		this.emit('sessionCreated', session);
@@ -61,8 +48,39 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		return session;
 	}
 
+	private setupBackgroundHandler(session: Session): void {
+		// This handler always runs for all data
+		session.process.onData((data: string) => {
+			// Always store output for state detection
+			session.output.push(data);
+			// Keep only last 100 chunks for state detection
+			if (session.output.length > 100) {
+				session.output.shift();
+			}
+			session.lastActivity = new Date();
+			this.detectState(session);
+			
+			// Only emit data events when session is active
+			if (session.isActive) {
+				this.emit('sessionData', session, data);
+			}
+		});
+
+		session.process.onExit(() => {
+			this.destroySession(session.worktreePath);
+			this.emit('sessionExit', session);
+		});
+	}
+
 	getSession(worktreePath: string): Session | undefined {
 		return this.sessions.get(worktreePath);
+	}
+
+	setSessionActive(worktreePath: string, active: boolean): void {
+		const session = this.sessions.get(worktreePath);
+		if (session) {
+			session.isActive = active;
+		}
 	}
 
 	destroySession(worktreePath: string): void {
