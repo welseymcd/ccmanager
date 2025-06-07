@@ -150,7 +150,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		if (session) {
 			try {
 				session.process.kill();
-			} catch (error) {
+			} catch (_error) {
 				// Process might already be dead
 			}
 			this.sessions.delete(worktreePath);

@@ -27,7 +27,12 @@ export default [
         __filename: true,
         global: true,
         module: true,
-        require: true
+        require: true,
+        setInterval: true,
+        clearInterval: true,
+        setTimeout: true,
+        clearTimeout: true,
+        NodeJS: true
       }
     },
     plugins: {
@@ -45,9 +50,13 @@ export default [
       'react/prop-types': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': ['error', { 
+        argsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_'
+      }],
       'no-console': 'off',
-      'no-unused-vars': 'off'
+      'no-unused-vars': 'off',
+      'no-control-regex': 'off'
     },
     settings: {
       react: {

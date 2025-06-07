@@ -49,7 +49,7 @@ export class WorktreeService {
 			}
 
 			return worktrees;
-		} catch (error) {
+		} catch (_error) {
 			// If git worktree command fails, assume we're in a regular git repo
 			return [
 				{
@@ -106,10 +106,11 @@ export class WorktreeService {
 			});
 
 			return {success: true};
-		} catch (error: any) {
+		} catch (error) {
 			return {
 				success: false,
-				error: error.message || 'Failed to create worktree',
+				error:
+					error instanceof Error ? error.message : 'Failed to create worktree',
 			};
 		}
 	}
