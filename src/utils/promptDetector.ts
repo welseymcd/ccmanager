@@ -65,7 +65,7 @@ export function isWaitingForInput(output: string): boolean {
 	}
 
 	// Check for user interaction
-	// │ Do you want to proceed?
+	// `│ Do you want to proceed?`
 	if (output.includes('│ Do you want')) {
 		return true;
 	}
