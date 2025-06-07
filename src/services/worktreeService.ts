@@ -19,9 +19,9 @@ export class WorktreeService {
 
 			const worktrees: Worktree[] = [];
 			const lines = output.trim().split('\n');
-			
+
 			let currentWorktree: Partial<Worktree> = {};
-			
+
 			for (const line of lines) {
 				if (line.startsWith('worktree ')) {
 					if (currentWorktree.path) {
@@ -38,7 +38,7 @@ export class WorktreeService {
 					currentWorktree.isMainWorktree = true;
 				}
 			}
-			
+
 			if (currentWorktree.path) {
 				worktrees.push(currentWorktree as Worktree);
 			}
@@ -51,12 +51,14 @@ export class WorktreeService {
 			return worktrees;
 		} catch (error) {
 			// If git worktree command fails, assume we're in a regular git repo
-			return [{
-				path: this.rootPath,
-				branch: this.getCurrentBranch(),
-				isMainWorktree: true,
-				hasSession: false,
-			}];
+			return [
+				{
+					path: this.rootPath,
+					branch: this.getCurrentBranch(),
+					isMainWorktree: true,
+					hasSession: false,
+				},
+			];
 		}
 	}
 
@@ -76,7 +78,10 @@ export class WorktreeService {
 		return existsSync(path.join(this.rootPath, '.git'));
 	}
 
-	createWorktree(worktreePath: string, branch: string): {success: boolean; error?: string} {
+	createWorktree(
+		worktreePath: string,
+		branch: string,
+	): {success: boolean; error?: string} {
 		try {
 			// Check if branch exists
 			let branchExists = false;
@@ -91,10 +96,10 @@ export class WorktreeService {
 			}
 
 			// Create the worktree
-			const command = branchExists 
+			const command = branchExists
 				? `git worktree add "${worktreePath}" "${branch}"`
 				: `git worktree add -b "${branch}" "${worktreePath}"`;
-			
+
 			execSync(command, {
 				cwd: this.rootPath,
 				encoding: 'utf8',

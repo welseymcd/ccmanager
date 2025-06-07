@@ -48,7 +48,7 @@ const NewWorktree: React.FC<NewWorktreeProps> = ({onComplete, onCancel}) => {
 						<Text>Enter worktree path (relative to repository root):</Text>
 					</Box>
 					<Box>
-						<Text color="cyan">{"> "}</Text>
+						<Text color="cyan">{'> '}</Text>
 						<TextInput
 							value={path}
 							onChange={setPath}
@@ -60,10 +60,13 @@ const NewWorktree: React.FC<NewWorktreeProps> = ({onComplete, onCancel}) => {
 			) : (
 				<Box flexDirection="column">
 					<Box marginBottom={1}>
-						<Text>Enter branch name for worktree at <Text color="cyan">{path}</Text>:</Text>
+						<Text>
+							Enter branch name for worktree at <Text color="cyan">{path}</Text>
+							:
+						</Text>
 					</Box>
 					<Box>
-						<Text color="cyan">{"> "}</Text>
+						<Text color="cyan">{'> '}</Text>
 						<TextInput
 							value={branch}
 							onChange={setBranch}

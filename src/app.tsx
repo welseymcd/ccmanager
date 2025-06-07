@@ -37,7 +37,7 @@ const App: React.FC<AppProps> = ({onReturnToMenu}) => {
 			stdout.on('resize', () => {
 				ptyProcess.resize(
 					process.stdout.columns || 80,
-					process.stdout.rows || 24
+					process.stdout.rows || 24,
 				);
 			});
 		}

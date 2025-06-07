@@ -17,7 +17,11 @@ interface MenuItem {
 	worktree?: Worktree;
 }
 
-const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree, onExit}) => {
+const Menu: React.FC<MenuProps> = ({
+	sessionManager,
+	onSelectWorktree,
+	onExit,
+}) => {
 	const [worktrees, setWorktrees] = useState<Worktree[]>([]);
 	const [sessions, setSessions] = useState<Session[]>([]);
 	const [items, setItems] = useState<MenuItem[]>([]);
@@ -32,7 +36,7 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree, onExit}) =
 		const updateSessions = () => {
 			const allSessions = sessionManager.getAllSessions();
 			setSessions(allSessions);
-			
+
 			// Update worktree session status
 			loadedWorktrees.forEach(wt => {
 				wt.hasSession = allSessions.some(s => s.worktreePath === wt.path);
@@ -59,7 +63,7 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree, onExit}) =
 		const menuItems: MenuItem[] = worktrees.map(wt => {
 			const session = sessions.find(s => s.worktreePath === wt.path);
 			let status = '';
-			
+
 			if (session) {
 				switch (session.state) {
 					case 'busy':
@@ -76,7 +80,7 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree, onExit}) =
 
 			const branchName = wt.branch.replace('refs/heads/', '');
 			const isMain = wt.isMainWorktree ? ' (main)' : '';
-			
+
 			return {
 				label: `${branchName}${isMain}${status}`,
 				value: wt.path,
@@ -114,7 +118,12 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree, onExit}) =
 			// Do nothing for separator
 		} else if (item.value === 'new-worktree') {
 			// Handle in parent component
-			onSelectWorktree({path: '', branch: '', isMainWorktree: false, hasSession: false});
+			onSelectWorktree({
+				path: '',
+				branch: '',
+				isMainWorktree: false,
+				hasSession: false,
+			});
 		} else if (item.worktree) {
 			onSelectWorktree(item.worktree);
 		}
@@ -127,26 +136,18 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree, onExit}) =
 					CCManager - Claude Code Worktree Manager
 				</Text>
 			</Box>
-			
+
 			<Box marginBottom={1}>
 				<Text dimColor>
 					Select a worktree to start or resume a Claude Code session:
 				</Text>
 			</Box>
 
-			<SelectInput 
-				items={items} 
-				onSelect={handleSelect}
-				isFocused={true}
-			/>
+			<SelectInput items={items} onSelect={handleSelect} isFocused={true} />
 
 			<Box marginTop={1} flexDirection="column">
-				<Text dimColor>
-					Status: 🔴 Active  🟠 Waiting  🔵 Idle
-				</Text>
-				<Text dimColor>
-					Controls: ↑↓ Navigate  Enter Select  Ctrl+Q Exit
-				</Text>
+				<Text dimColor>Status: 🔴 Active 🟠 Waiting 🔵 Idle</Text>
+				<Text dimColor>Controls: ↑↓ Navigate Enter Select Ctrl+Q Exit</Text>
 			</Box>
 		</Box>
 	);

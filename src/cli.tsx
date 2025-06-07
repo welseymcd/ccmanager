@@ -4,7 +4,8 @@ import {render} from 'ink';
 import meow from 'meow';
 import App from './components/App.js';
 
-meow(`
+meow(
+	`
 	Usage
 	  $ ccmanager
 
@@ -14,13 +15,17 @@ meow(`
 
 	Examples
 	  $ ccmanager
-`, {
-	importMeta: import.meta,
-});
+`,
+	{
+		importMeta: import.meta,
+	},
+);
 
 // Check if we're in a TTY environment
 if (!process.stdin.isTTY || !process.stdout.isTTY) {
-	console.error('Error: ccmanager must be run in an interactive terminal (TTY)');
+	console.error(
+		'Error: ccmanager must be run in an interactive terminal (TTY)',
+	);
 	process.exit(1);
 }
 

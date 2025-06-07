@@ -9,7 +9,11 @@ interface SessionProps {
 	onReturnToMenu: () => void;
 }
 
-const Session: React.FC<SessionProps> = ({session, sessionManager, onReturnToMenu}) => {
+const Session: React.FC<SessionProps> = ({
+	session,
+	sessionManager,
+	onReturnToMenu,
+}) => {
 	const {stdout} = useStdout();
 	const [isExiting, setIsExiting] = useState(false);
 
@@ -26,13 +30,15 @@ const Session: React.FC<SessionProps> = ({session, sessionManager, onReturnToMen
 				for (let i = 0; i < restoredSession.outputHistory.length; i++) {
 					const buffer = restoredSession.outputHistory[i];
 					if (!buffer) continue;
-					
+
 					const str = buffer.toString('utf8');
-					
+
 					// Skip clear screen sequences at the beginning
 					if (i === 0 && (str.includes('\x1B[2J') || str.includes('\x1B[H'))) {
 						// Skip this buffer or remove the clear sequence
-						const cleaned = str.replace(/\x1B\[2J/g, '').replace(/\x1B\[H/g, '');
+						const cleaned = str
+							.replace(/\x1B\[2J/g, '')
+							.replace(/\x1B\[H/g, '');
 						if (cleaned.length > 0) {
 							stdout.write(Buffer.from(cleaned, 'utf8'));
 						}
@@ -71,10 +77,10 @@ const Session: React.FC<SessionProps> = ({session, sessionManager, onReturnToMen
 		const handleResize = () => {
 			session.process.resize(
 				process.stdout.columns || 80,
-				process.stdout.rows || 24
+				process.stdout.rows || 24,
 			);
 		};
-		
+
 		stdout.on('resize', handleResize);
 
 		// Set up raw input handling
@@ -82,7 +88,7 @@ const Session: React.FC<SessionProps> = ({session, sessionManager, onReturnToMen
 		stdin.setRawMode(true);
 		stdin.resume();
 		stdin.setEncoding('utf8');
-		
+
 		const handleStdinData = (data: string) => {
 			if (isExiting) return;
 
@@ -108,7 +114,7 @@ const Session: React.FC<SessionProps> = ({session, sessionManager, onReturnToMen
 
 			// Mark session as inactive
 			sessionManager.setSessionActive(session.worktreePath, false);
-			
+
 			// Remove event listeners
 			sessionManager.off('sessionRestore', handleSessionRestore);
 			sessionManager.off('sessionData', handleSessionData);

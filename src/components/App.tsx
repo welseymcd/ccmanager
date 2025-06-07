@@ -34,7 +34,7 @@ const App: React.FC = () => {
 
 		// Get or create session for this worktree
 		let session = sessionManager.getSession(worktree.path);
-		
+
 		if (!session) {
 			session = sessionManager.createSession(worktree.path);
 		}
