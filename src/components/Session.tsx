@@ -66,7 +66,7 @@ const Session: React.FC<SessionProps> = ({
 		const handleSessionExit = (exitedSession: SessionType) => {
 			if (exitedSession.id === session.id) {
 				setIsExiting(true);
-				onReturnToMenu();
+				// Don't call onReturnToMenu here - App component handles it
 			}
 		};
 

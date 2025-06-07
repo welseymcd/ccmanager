@@ -19,8 +19,33 @@ const App: React.FC = () => {
 	const [menuKey, setMenuKey] = useState(0); // Force menu refresh
 
 	useEffect(() => {
+		// Listen for session exits to return to menu automatically
+		const handleSessionExit = (session: SessionType) => {
+			// If the exited session is the active one, return to menu
+			setActiveSession(current => {
+				if (current && session.id === current.id) {
+					// Session that exited is the active one, trigger return to menu
+					setTimeout(() => {
+						setActiveSession(null);
+						setError(null);
+						setView('menu');
+						setMenuKey(prev => prev + 1);
+						if (process.stdout.isTTY) {
+							process.stdout.write('\x1B[2J\x1B[H');
+						}
+						process.stdin.resume();
+						process.stdin.setEncoding('utf8');
+					}, 0);
+				}
+				return current;
+			});
+		};
+
+		sessionManager.on('sessionExit', handleSessionExit);
+
 		// Cleanup on unmount
 		return () => {
+			sessionManager.off('sessionExit', handleSessionExit);
 			sessionManager.destroy();
 		};
 	}, [sessionManager]);
@@ -52,6 +77,9 @@ const App: React.FC = () => {
 		if (process.stdout.isTTY) {
 			process.stdout.write('\x1B[2J\x1B[H');
 		}
+		// Re-enable stdin for menu interaction
+		process.stdin.resume();
+		process.stdin.setEncoding('utf8');
 	};
 
 	const handleCreateWorktree = async (path: string, branch: string) => {
