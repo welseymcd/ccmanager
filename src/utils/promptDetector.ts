@@ -87,3 +87,8 @@ export function isUpdateSuggestionOnly(output: string): boolean {
 
 	return false;
 }
+
+export function isPromptBoxBottomBorder(line: string): boolean {
+	// Check if the line is a prompt box bottom border pattern
+	return /^╰─+╯$/.test(line.trim());
+}

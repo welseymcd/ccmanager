@@ -230,8 +230,12 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			newState = 'waiting_input';
 			this.waitingStateTracker.set(session.id, true);
 		} else if (wasWaiting && isJustBottomBorder) {
-			// If we were waiting and the new output is just the bottom border,
-			// maintain the waiting state
+			// When Claude is waiting for input and user types, the prompt box bottom border
+			// may appear as a separate chunk of output due to terminal rendering delays.
+			// Without this check, the session would incorrectly transition from 'waiting_input'
+			// to 'busy' state just because of this rendering artifact, causing UI flicker
+			// and incorrect state representation. By maintaining the waiting state when we
+			// detect this pattern, we ensure smooth state transitions.
 			newState = 'waiting_input';
 		} else if (hasNewOutput) {
 			// If we have new output that's not just a bottom border, session is active

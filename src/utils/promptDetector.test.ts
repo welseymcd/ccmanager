@@ -3,6 +3,7 @@ import {
 	isWaitingForInput,
 	isUpdateSuggestionOnly,
 	isPromptBoxOnly,
+	isPromptBoxBottomBorder,
 } from './promptDetector.js';
 
 describe('isPromptBoxOnly', () => {
@@ -222,14 +223,13 @@ describe('isUpdateSuggestionOnly', () => {
 	});
 });
 
-describe('Prompt Box Bottom Border Detection', () => {
-	it('should detect simple bottom border', () => {
+describe('isPromptBoxBottomBorder', () => {
+	it('should return true for simple bottom border', () => {
 		const bottomBorder = '╰──────────────────────────╯';
-		// Using the regex pattern from sessionManager
-		expect(/^╰─+╯$/.test(bottomBorder.trim())).toBe(true);
+		expect(isPromptBoxBottomBorder(bottomBorder)).toBe(true);
 	});
 
-	it('should detect bottom border with varying lengths', () => {
+	it('should return true for bottom border with varying lengths', () => {
 		const borders = [
 			'╰─╯',
 			'╰───╯',
@@ -237,11 +237,17 @@ describe('Prompt Box Bottom Border Detection', () => {
 		];
 
 		borders.forEach(border => {
-			expect(/^╰─+╯$/.test(border.trim())).toBe(true);
+			expect(isPromptBoxBottomBorder(border)).toBe(true);
 		});
 	});
 
-	it('should reject invalid patterns', () => {
+	it('should return true for bottom border with whitespace', () => {
+		expect(isPromptBoxBottomBorder('  ╰──────────────╯  ')).toBe(true);
+		expect(isPromptBoxBottomBorder('\t╰──────────────╯\t')).toBe(true);
+		expect(isPromptBoxBottomBorder('╰──────────────╯\n')).toBe(true);
+	});
+
+	it('should return false for invalid patterns', () => {
 		const invalidPatterns = [
 			'╰──────────────────────────',
 			'──────────────────────────╯',
@@ -249,10 +255,22 @@ describe('Prompt Box Bottom Border Detection', () => {
 			'Some other text',
 			'╰ ─ ─ ─ ╯',
 			'╰+++++++╯',
+			'',
+			'   ',
+			'╰╯',
+			'╰──────text──────╯',
 		];
 
 		invalidPatterns.forEach(pattern => {
-			expect(/^╰─+╯$/.test(pattern.trim())).toBe(false);
+			expect(isPromptBoxBottomBorder(pattern)).toBe(false);
 		});
+	});
+
+	it('should return false for top border pattern', () => {
+		expect(isPromptBoxBottomBorder('╭──────────────╮')).toBe(false);
+	});
+
+	it('should return false for middle prompt line', () => {
+		expect(isPromptBoxBottomBorder('│ >             │')).toBe(false);
 	});
 });
