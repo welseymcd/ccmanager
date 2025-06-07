@@ -3,6 +3,7 @@ import {
 	isWaitingForInput,
 	isUpdateSuggestionOnly,
 	isPromptBoxOnly,
+	isPromptBoxBottomBorder,
 } from './promptDetector.js';
 
 describe('isPromptBoxOnly', () => {
@@ -219,5 +220,57 @@ describe('isUpdateSuggestionOnly', () => {
 		const message =
 			'Error occurred: Auto-update failed · Try claude doctor or npm i -g @anthropic-ai/claude-code';
 		expect(isUpdateSuggestionOnly(message)).toBe(false);
+	});
+});
+
+describe('isPromptBoxBottomBorder', () => {
+	it('should return true for simple bottom border', () => {
+		const bottomBorder = '╰──────────────────────────╯';
+		expect(isPromptBoxBottomBorder(bottomBorder)).toBe(true);
+	});
+
+	it('should return true for bottom border with varying lengths', () => {
+		const borders = [
+			'╰─╯',
+			'╰───╯',
+			'╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯',
+		];
+
+		borders.forEach(border => {
+			expect(isPromptBoxBottomBorder(border)).toBe(true);
+		});
+	});
+
+	it('should return true for bottom border with whitespace', () => {
+		expect(isPromptBoxBottomBorder('  ╰──────────────╯  ')).toBe(true);
+		expect(isPromptBoxBottomBorder('\t╰──────────────╯\t')).toBe(true);
+		expect(isPromptBoxBottomBorder('╰──────────────╯\n')).toBe(true);
+	});
+
+	it('should return false for invalid patterns', () => {
+		const invalidPatterns = [
+			'╰──────────────────────────',
+			'──────────────────────────╯',
+			'│──────────────────────────│',
+			'Some other text',
+			'╰ ─ ─ ─ ╯',
+			'╰+++++++╯',
+			'',
+			'   ',
+			'╰╯',
+			'╰──────text──────╯',
+		];
+
+		invalidPatterns.forEach(pattern => {
+			expect(isPromptBoxBottomBorder(pattern)).toBe(false);
+		});
+	});
+
+	it('should return false for top border pattern', () => {
+		expect(isPromptBoxBottomBorder('╭──────────────╮')).toBe(false);
+	});
+
+	it('should return false for middle prompt line', () => {
+		expect(isPromptBoxBottomBorder('│ >             │')).toBe(false);
 	});
 });
