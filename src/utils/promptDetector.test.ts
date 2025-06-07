@@ -221,3 +221,38 @@ describe('isUpdateSuggestionOnly', () => {
 		expect(isUpdateSuggestionOnly(message)).toBe(false);
 	});
 });
+
+describe('Prompt Box Bottom Border Detection', () => {
+	it('should detect simple bottom border', () => {
+		const bottomBorder = '╰──────────────────────────╯';
+		// Using the regex pattern from sessionManager
+		expect(/^╰─+╯$/.test(bottomBorder.trim())).toBe(true);
+	});
+
+	it('should detect bottom border with varying lengths', () => {
+		const borders = [
+			'╰─╯',
+			'╰───╯',
+			'╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯',
+		];
+
+		borders.forEach(border => {
+			expect(/^╰─+╯$/.test(border.trim())).toBe(true);
+		});
+	});
+
+	it('should reject invalid patterns', () => {
+		const invalidPatterns = [
+			'╰──────────────────────────',
+			'──────────────────────────╯',
+			'│──────────────────────────│',
+			'Some other text',
+			'╰ ─ ─ ─ ╯',
+			'╰+++++++╯',
+		];
+
+		invalidPatterns.forEach(pattern => {
+			expect(/^╰─+╯$/.test(pattern.trim())).toBe(false);
+		});
+	});
+});

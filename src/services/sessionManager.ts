@@ -13,6 +13,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	private stateDetectionInterval: NodeJS.Timeout | null = null;
 	private previousOutputs: Map<string, string> = new Map();
 	private lastReceivedData: Map<string, string> = new Map();
+	private waitingStateTracker: Map<string, boolean> = new Map();
 
 	private stripAnsi(str: string): string {
 		// Remove all ANSI escape sequences including cursor movement, color codes, etc.
@@ -27,6 +28,13 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			.replace(/\r/g, '') // Carriage returns
 			.replace(/^[0-9;]+m/gm, '') // Orphaned color codes at line start
 			.replace(/[0-9]+;[0-9]+;[0-9;]+m/g, ''); // Orphaned 24-bit color codes
+	}
+
+	private isPromptBoxBottomBorder(output: string): boolean {
+		// Check if the output is just a prompt box bottom border
+		const trimmed = output.trim();
+		// Match pattern like ╰────────────────╯ with any number of ─ characters
+		return /^╰─+╯$/.test(trimmed);
 	}
 
 	constructor() {
@@ -75,6 +83,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		// Initialize previous output tracking
 		this.previousOutputs.set(session.id, '');
 		this.lastReceivedData.set(session.id, '');
+		this.waitingStateTracker.set(session.id, false);
 
 		this.emit('sessionCreated', session);
 
@@ -157,6 +166,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			// Clean up previous output tracking
 			this.previousOutputs.delete(session.id);
 			this.lastReceivedData.delete(session.id);
+			this.waitingStateTracker.delete(session.id);
 			this.emit('sessionDestroyed', session);
 		}
 	}
@@ -208,20 +218,31 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 
 		// Check if waiting for input using actual Claude patterns
 		const isWaiting = isWaitingForInput(cleanRecentOutput);
+		const wasWaiting = this.waitingStateTracker.get(session.id) || false;
+
+		// Check if the new output is just a prompt box bottom border
+		const isJustBottomBorder = this.isPromptBoxBottomBorder(cleanRecentOutput);
 
 		// Determine state based on patterns and activity
 		let newState = oldState; // Start with current state
 
 		if (isWaiting) {
 			newState = 'waiting_input';
+			this.waitingStateTracker.set(session.id, true);
+		} else if (wasWaiting && isJustBottomBorder) {
+			// If we were waiting and the new output is just the bottom border,
+			// maintain the waiting state
+			newState = 'waiting_input';
 		} else if (hasNewOutput) {
-			// If we have new output, session is active
+			// If we have new output that's not just a bottom border, session is active
 			newState = 'busy';
+			this.waitingStateTracker.set(session.id, false);
 		} else {
 			// No new output and no waiting patterns
 			const timeSinceActivity = Date.now() - session.lastActivity.getTime();
 			if (timeSinceActivity > 3000) {
 				newState = 'idle';
+				this.waitingStateTracker.set(session.id, false);
 			}
 			// else keep current state
 		}
