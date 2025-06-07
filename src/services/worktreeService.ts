@@ -114,4 +114,52 @@ export class WorktreeService {
 			};
 		}
 	}
+
+	deleteWorktree(worktreePath: string): {success: boolean; error?: string} {
+		try {
+			// Get the worktree info to find the branch
+			const worktrees = this.getWorktrees();
+			const worktree = worktrees.find(wt => wt.path === worktreePath);
+
+			if (!worktree) {
+				return {
+					success: false,
+					error: 'Worktree not found',
+				};
+			}
+
+			if (worktree.isMainWorktree) {
+				return {
+					success: false,
+					error: 'Cannot delete the main worktree',
+				};
+			}
+
+			// Remove the worktree
+			execSync(`git worktree remove "${worktreePath}" --force`, {
+				cwd: this.rootPath,
+				encoding: 'utf8',
+			});
+
+			// Delete the branch if it exists
+			const branchName = worktree.branch.replace('refs/heads/', '');
+			try {
+				execSync(`git branch -D "${branchName}"`, {
+					cwd: this.rootPath,
+					encoding: 'utf8',
+				});
+			} catch {
+				// Branch might not exist or might be checked out elsewhere
+				// This is not a fatal error
+			}
+
+			return {success: true};
+		} catch (error) {
+			return {
+				success: false,
+				error:
+					error instanceof Error ? error.message : 'Failed to delete worktree',
+			};
+		}
+	}
 }

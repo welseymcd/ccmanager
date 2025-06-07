@@ -3,11 +3,18 @@ import {useApp, Box, Text} from 'ink';
 import Menu from './Menu.js';
 import Session from './Session.js';
 import NewWorktree from './NewWorktree.js';
+import DeleteWorktree from './DeleteWorktree.js';
 import {SessionManager} from '../services/sessionManager.js';
 import {WorktreeService} from '../services/worktreeService.js';
 import {Worktree, Session as SessionType} from '../types/index.js';
 
-type View = 'menu' | 'session' | 'new-worktree' | 'creating-worktree';
+type View =
+	| 'menu'
+	| 'session'
+	| 'new-worktree'
+	| 'creating-worktree'
+	| 'delete-worktree'
+	| 'deleting-worktree';
 
 const App: React.FC = () => {
 	const {exit} = useApp();
@@ -57,6 +64,12 @@ const App: React.FC = () => {
 			return;
 		}
 
+		// Check if this is the delete worktree option
+		if (worktree.path === 'DELETE_WORKTREE') {
+			setView('delete-worktree');
+			return;
+		}
+
 		// Get or create session for this worktree
 		let session = sessionManager.getSession(worktree.path);
 
@@ -100,6 +113,34 @@ const App: React.FC = () => {
 	};
 
 	const handleCancelNewWorktree = () => {
+		handleReturnToMenu();
+	};
+
+	const handleDeleteWorktrees = async (worktreePaths: string[]) => {
+		setView('deleting-worktree');
+		setError(null);
+
+		// Delete the worktrees
+		let hasError = false;
+		for (const path of worktreePaths) {
+			const result = worktreeService.deleteWorktree(path);
+			if (!result.success) {
+				hasError = true;
+				setError(result.error || 'Failed to delete worktree');
+				break;
+			}
+		}
+
+		if (!hasError) {
+			// Success - return to menu
+			handleReturnToMenu();
+		} else {
+			// Show error
+			setView('delete-worktree');
+		}
+	};
+
+	const handleCancelDeleteWorktree = () => {
 		handleReturnToMenu();
 	};
 
@@ -149,6 +190,30 @@ const App: React.FC = () => {
 		return (
 			<Box flexDirection="column">
 				<Text color="green">Creating worktree...</Text>
+			</Box>
+		);
+	}
+
+	if (view === 'delete-worktree') {
+		return (
+			<Box flexDirection="column">
+				{error && (
+					<Box marginBottom={1}>
+						<Text color="red">Error: {error}</Text>
+					</Box>
+				)}
+				<DeleteWorktree
+					onComplete={handleDeleteWorktrees}
+					onCancel={handleCancelDeleteWorktree}
+				/>
+			</Box>
+		);
+	}
+
+	if (view === 'deleting-worktree') {
+		return (
+			<Box flexDirection="column">
+				<Text color="red">Deleting worktrees...</Text>
 			</Box>
 		);
 	}
