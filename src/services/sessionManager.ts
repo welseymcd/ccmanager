@@ -211,11 +211,6 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			return;
 		}
 
-		logger.warn(
-			'DEBUGPRINT[98]: sessionManager.ts:158: cleanRecentOutput=',
-			cleanRecentOutput,
-		);
-
 		// Check if waiting for input using actual Claude patterns
 		const isWaiting = isWaitingForInput(cleanRecentOutput);
 		const wasWaiting = this.waitingStateTracker.get(session.id) || false;

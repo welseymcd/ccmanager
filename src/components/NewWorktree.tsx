@@ -34,6 +34,7 @@ const NewWorktree: React.FC<NewWorktreeProps> = ({onComplete, onCancel}) => {
 		}
 	};
 
+
 	return (
 		<Box flexDirection="column">
 			<Box marginBottom={1}>

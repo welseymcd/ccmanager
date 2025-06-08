@@ -85,6 +85,12 @@ const Session: React.FC<SessionProps> = ({
 
 		// Set up raw input handling
 		const stdin = process.stdin;
+
+		// Store original stdin state
+		const originalIsRaw = stdin.isRaw;
+		const originalIsPaused = stdin.isPaused();
+
+		// Configure stdin for PTY passthrough
 		stdin.setRawMode(true);
 		stdin.resume();
 		stdin.setEncoding('utf8');
@@ -94,6 +100,12 @@ const Session: React.FC<SessionProps> = ({
 
 			// Check for Ctrl+E (ASCII code 5)
 			if (data === '\x05') {
+				// Disable focus reporting mode before returning to menu
+				if (stdout) {
+					stdout.write('\x1b[?1004l');
+				}
+				// Restore stdin state before returning to menu
+				stdin.removeListener('data', handleStdinData);
 				stdin.setRawMode(false);
 				stdin.pause();
 				onReturnToMenu();
@@ -107,10 +119,23 @@ const Session: React.FC<SessionProps> = ({
 		stdin.on('data', handleStdinData);
 
 		return () => {
-			// Restore stdin
-			stdin.setRawMode(false);
-			stdin.pause();
+			// Remove listener first to prevent any race conditions
 			stdin.removeListener('data', handleStdinData);
+
+			// Disable focus reporting mode that might have been enabled by the PTY
+			if (stdout) {
+				stdout.write('\x1b[?1004l');
+			}
+
+			// Restore stdin to its original state
+			if (stdin.isTTY) {
+				stdin.setRawMode(originalIsRaw || false);
+				if (originalIsPaused) {
+					stdin.pause();
+				} else {
+					stdin.resume();
+				}
+			}
 
 			// Mark session as inactive
 			sessionManager.setSessionActive(session.worktreePath, false);

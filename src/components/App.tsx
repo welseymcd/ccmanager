@@ -84,15 +84,26 @@ const App: React.FC = () => {
 	const handleReturnToMenu = () => {
 		setActiveSession(null);
 		setError(null);
-		setView('menu');
-		setMenuKey(prev => prev + 1); // Force menu refresh
-		// Clear the screen when returning to menu
-		if (process.stdout.isTTY) {
-			process.stdout.write('\x1B[2J\x1B[H');
-		}
-		// Re-enable stdin for menu interaction
-		process.stdin.resume();
-		process.stdin.setEncoding('utf8');
+		
+		// Add a small delay to ensure Session cleanup completes
+		setTimeout(() => {
+			setView('menu');
+			setMenuKey(prev => prev + 1); // Force menu refresh
+			
+			// Clear the screen when returning to menu
+			if (process.stdout.isTTY) {
+				process.stdout.write('\x1B[2J\x1B[H');
+			}
+			
+			// Ensure stdin is in a clean state for Ink components
+			if (process.stdin.isTTY) {
+				// Flush any pending input to prevent escape sequences from leaking
+				process.stdin.read();
+				process.stdin.setRawMode(false);
+				process.stdin.resume();
+				process.stdin.setEncoding('utf8');
+			}
+		}, 50); // Small delay to ensure proper cleanup
 	};
 
 	const handleCreateWorktree = async (path: string, branch: string) => {
@@ -163,6 +174,7 @@ const App: React.FC = () => {
 	if (view === 'session' && activeSession) {
 		return (
 			<Session
+				key={activeSession.id}
 				session={activeSession}
 				sessionManager={sessionManager}
 				onReturnToMenu={handleReturnToMenu}
