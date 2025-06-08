@@ -59,39 +59,9 @@ const App: React.FC<AppProps> = ({onReturnToMenu}) => {
 			return;
 		}
 
-		if (key.ctrl && char === 'c') {
-			pty.write('\x03');
-		} else if (key.ctrl && char === 'd') {
-			pty.write('\x04');
-		} else if (key.ctrl && char === 'a') {
-			pty.write('\x01');
-		} else if (key.ctrl && char === 'k') {
-			pty.write('\x0B');
-		} else if (key.ctrl && char === 'l') {
-			pty.write('\x0C');
-		} else if (key.ctrl && char === 'u') {
-			pty.write('\x15');
-		} else if (key.ctrl && char === 'w') {
-			pty.write('\x17');
-		} else if (key.return) {
-			pty.write('\r');
-		} else if (key.backspace || key.delete) {
-			pty.write('\x7F');
-		} else if (key.tab) {
-			pty.write('\t');
-		} else if (key.escape) {
-			pty.write('\x1B');
-		} else if (key.upArrow) {
-			pty.write('\x1B[A');
-		} else if (key.downArrow) {
-			pty.write('\x1B[B');
-		} else if (key.leftArrow) {
-			pty.write('\x1B[D');
-		} else if (key.rightArrow) {
-			pty.write('\x1B[C');
-		} else if (char) {
-			pty.write(char);
-		}
+		// if (char) {
+		// 	pty.write(char);
+		// }
 	});
 
 	if (showMenu) {
