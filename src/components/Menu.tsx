@@ -67,7 +67,7 @@ const Menu: React.FC<MenuProps> = ({
 			if (session) {
 				switch (session.state) {
 					case 'busy':
-						status = ' [🔴 Active]';
+						status = ' [🔴 Busy]';
 						break;
 					case 'waiting_input':
 						status = ' [🟠 Waiting]';
@@ -170,7 +170,7 @@ const Menu: React.FC<MenuProps> = ({
 			<SelectInput items={items} onSelect={handleSelect} isFocused={true} />
 
 			<Box marginTop={1} flexDirection="column">
-				<Text dimColor>Status: 🔴 Active 🟠 Waiting 🔵 Idle</Text>
+				<Text dimColor>Status: 🔴 Busy 🟠 Waiting 🔵 Idle</Text>
 				<Text dimColor>Controls: ↑↓ Navigate Enter Select Ctrl+Q Exit</Text>
 			</Box>
 		</Box>
