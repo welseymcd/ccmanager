@@ -6,6 +6,7 @@ import {
 	isUpdateSuggestionOnly,
 	isWaitingForInput,
 } from '../utils/promptDetector.js';
+import {logger} from '../utils/logger.js';
 
 export class SessionManager extends EventEmitter implements ISessionManager {
 	sessions: Map<string, Session>;
@@ -201,14 +202,13 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 
 		// Strip ANSI codes for pattern matching
 		const cleanRecentOutput = this.stripAnsi(recentOutput);
+		const timeSinceActivity = Date.now() - session.lastActivity.getTime();
+		const waitingForNonPrompt =
+			this.waitingForNonPromptOutput.get(session.id) || false;
 
 		// Check for timeout-based idle even if no new output
 		if (!cleanRecentOutput.trim()) {
 			// No new output, but still check for idle timeout
-			const timeSinceActivity = Date.now() - session.lastActivity.getTime();
-			const waitingForNonPrompt =
-				this.waitingForNonPromptOutput.get(session.id) || false;
-
 			// Only transition to idle if:
 			// 1. Not waiting for input
 			// 2. Enough time has passed (3 seconds)
@@ -250,8 +250,6 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		}
 
 		// If we have output after "esc to interrupt" that's not a prompt box, clear the trackers
-		const waitingForNonPrompt =
-			this.waitingForNonPromptOutput.get(session.id) || false;
 		if (
 			(wasEscToInterruptActive || waitingForNonPrompt) &&
 			hasNewOutput &&
@@ -293,9 +291,6 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		} else {
 			// Check idle conditions
 			// Idle if: not waiting AND (no "esc to interrupt" OR has output after "esc to interrupt" that's not prompt box)
-			const timeSinceActivity = Date.now() - session.lastActivity.getTime();
-			const waitingForNonPrompt =
-				this.waitingForNonPromptOutput.get(session.id) || false;
 
 			if (!isWaiting && !waitingForNonPrompt && timeSinceActivity > 3000) {
 				// Normal idle after 3 seconds when not waiting for non-prompt output
