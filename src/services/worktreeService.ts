@@ -166,6 +166,7 @@ export class WorktreeService {
 	mergeWorktree(
 		sourceBranch: string,
 		targetBranch: string,
+		useRebase: boolean = false,
 	): {success: boolean; error?: string} {
 		try {
 			// Get worktrees to find the target worktree path
@@ -181,18 +182,43 @@ export class WorktreeService {
 				};
 			}
 
-			// Perform the merge in the target worktree
-			execSync(`git merge "${sourceBranch}"`, {
-				cwd: targetWorktree.path,
-				encoding: 'utf8',
-			});
+			// Perform the merge or rebase in the target worktree
+			if (useRebase) {
+				// For rebase, we need to checkout source branch and rebase it onto target
+				const sourceWorktree = worktrees.find(
+					wt => wt.branch.replace('refs/heads/', '') === sourceBranch,
+				);
+
+				if (!sourceWorktree) {
+					return {
+						success: false,
+						error: 'Source branch worktree not found',
+					};
+				}
+
+				// Rebase source branch onto target branch
+				execSync(`git rebase "${targetBranch}"`, {
+					cwd: sourceWorktree.path,
+					encoding: 'utf8',
+				});
+			} else {
+				// Regular merge
+				execSync(`git merge "${sourceBranch}"`, {
+					cwd: targetWorktree.path,
+					encoding: 'utf8',
+				});
+			}
 
 			return {success: true};
 		} catch (error) {
 			return {
 				success: false,
 				error:
-					error instanceof Error ? error.message : 'Failed to merge branches',
+					error instanceof Error
+						? error.message
+						: useRebase
+							? 'Failed to rebase branches'
+							: 'Failed to merge branches',
 			};
 		}
 	}

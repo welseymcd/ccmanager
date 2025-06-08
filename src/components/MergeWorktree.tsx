@@ -8,6 +8,7 @@ interface MergeWorktreeProps {
 		sourceBranch: string,
 		targetBranch: string,
 		deleteAfterMerge: boolean,
+		useRebase: boolean,
 	) => void;
 	onCancel: () => void;
 }
@@ -15,6 +16,7 @@ interface MergeWorktreeProps {
 type Step =
 	| 'select-source'
 	| 'select-target'
+	| 'select-operation'
 	| 'confirm-merge'
 	| 'delete-confirm';
 
@@ -33,6 +35,8 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 	const [branchItems, setBranchItems] = useState<BranchItem[]>([]);
 	const [confirmFocused, setConfirmFocused] = useState(true);
 	const [deleteFocused, setDeleteFocused] = useState(true);
+	const [useRebase, setUseRebase] = useState(false);
+	const [operationFocused, setOperationFocused] = useState(false);
 
 	useEffect(() => {
 		const worktreeService = new WorktreeService();
@@ -54,7 +58,15 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 			return;
 		}
 
-		if (step === 'confirm-merge') {
+		if (step === 'select-operation') {
+			if (key.leftArrow || key.rightArrow) {
+				const newOperationFocused = !operationFocused;
+				setOperationFocused(newOperationFocused);
+				setUseRebase(newOperationFocused);
+			} else if (key.return) {
+				setStep('confirm-merge');
+			}
+		} else if (step === 'confirm-merge') {
 			if (key.leftArrow || key.rightArrow) {
 				setConfirmFocused(!confirmFocused);
 			} else if (key.return) {
@@ -71,7 +83,7 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 				setDeleteFocused(!deleteFocused);
 			} else if (key.return) {
 				// Complete the merge with delete preference
-				onComplete(sourceBranch, targetBranch, deleteFocused);
+				onComplete(sourceBranch, targetBranch, deleteFocused, useRebase);
 			}
 		}
 	});
@@ -86,7 +98,7 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 
 	const handleSelectTarget = (item: BranchItem) => {
 		setTargetBranch(item.value);
-		setStep('confirm-merge');
+		setStep('select-operation');
 	};
 
 	if (step === 'select-source') {
@@ -147,18 +159,66 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 		);
 	}
 
-	if (step === 'confirm-merge') {
+	if (step === 'select-operation') {
 		return (
 			<Box flexDirection="column">
 				<Box marginBottom={1}>
 					<Text bold color="green">
-						Confirm Merge
+						Select Operation
 					</Text>
 				</Box>
 
 				<Box marginBottom={1}>
 					<Text>
-						Merge <Text color="yellow">{sourceBranch}</Text> into{' '}
+						Choose how to integrate <Text color="yellow">{sourceBranch}</Text>{' '}
+						into <Text color="yellow">{targetBranch}</Text>:
+					</Text>
+				</Box>
+
+				<Box>
+					<Box marginRight={2}>
+						<Text
+							color={!operationFocused ? 'green' : 'white'}
+							inverse={!operationFocused}
+						>
+							{' '}
+							Merge{' '}
+						</Text>
+					</Box>
+					<Box>
+						<Text
+							color={operationFocused ? 'blue' : 'white'}
+							inverse={operationFocused}
+						>
+							{' '}
+							Rebase{' '}
+						</Text>
+					</Box>
+				</Box>
+
+				<Box marginTop={1}>
+					<Text dimColor>
+						Use ← → to navigate, Enter to select, ESC to cancel
+					</Text>
+				</Box>
+			</Box>
+		);
+	}
+
+	if (step === 'confirm-merge') {
+		return (
+			<Box flexDirection="column">
+				<Box marginBottom={1}>
+					<Text bold color="green">
+						Confirm {useRebase ? 'Rebase' : 'Merge'}
+					</Text>
+				</Box>
+
+				<Box marginBottom={1}>
+					<Text>
+						{useRebase ? 'Rebase' : 'Merge'}{' '}
+						<Text color="yellow">{sourceBranch}</Text>{' '}
+						{useRebase ? 'onto' : 'into'}{' '}
 						<Text color="yellow">{targetBranch}</Text>?
 					</Text>
 				</Box>

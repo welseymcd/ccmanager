@@ -157,6 +157,7 @@ const App: React.FC = () => {
 		sourceBranch: string,
 		targetBranch: string,
 		deleteAfterMerge: boolean,
+		useRebase: boolean,
 	) => {
 		setView('merging-worktree');
 		setError(null);
@@ -165,6 +166,7 @@ const App: React.FC = () => {
 		const mergeResult = worktreeService.mergeWorktree(
 			sourceBranch,
 			targetBranch,
+			useRebase,
 		);
 
 		if (mergeResult.success) {
