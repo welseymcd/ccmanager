@@ -1,7 +1,6 @@
 import {spawn} from 'node-pty';
 import {Session, SessionManager as ISessionManager} from '../types/index.js';
 import {EventEmitter} from 'events';
-import {logger} from '../utils/logger.js';
 import {
 	isPromptBoxOnly,
 	isUpdateSuggestionOnly,
@@ -14,6 +13,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	private previousOutputs: Map<string, string> = new Map();
 	private lastReceivedData: Map<string, string> = new Map();
 	private waitingStateTracker: Map<string, boolean> = new Map();
+	private escToInterruptTracker: Map<string, boolean> = new Map();
+	private waitingForNonPromptOutput: Map<string, boolean> = new Map();
 
 	private stripAnsi(str: string): string {
 		// Remove all ANSI escape sequences including cursor movement, color codes, etc.
@@ -24,7 +25,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			.replace(/\x1b[PX^_].*?\x1b\\/g, '') // DCS/PM/APC/SOS sequences
 			.replace(/\x1b\[\?[0-9;]*[hl]/g, '') // Private mode sequences
 			.replace(/\x1b[>=]/g, '') // Other escape sequences
-			.replace(/[\x00-\x1F\x7F]/g, '') // Control characters
+			.replace(/[\x00-\x09\x0B-\x1F\x7F]/g, '') // Control characters except newline (\x0A)
 			.replace(/\r/g, '') // Carriage returns
 			.replace(/^[0-9;]+m/gm, '') // Orphaned color codes at line start
 			.replace(/[0-9]+;[0-9]+;[0-9;]+m/g, ''); // Orphaned 24-bit color codes
@@ -84,6 +85,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		this.previousOutputs.set(session.id, '');
 		this.lastReceivedData.set(session.id, '');
 		this.waitingStateTracker.set(session.id, false);
+		this.escToInterruptTracker.set(session.id, false);
+		this.waitingForNonPromptOutput.set(session.id, false);
 
 		this.emit('sessionCreated', session);
 
@@ -167,6 +170,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			this.previousOutputs.delete(session.id);
 			this.lastReceivedData.delete(session.id);
 			this.waitingStateTracker.delete(session.id);
+			this.escToInterruptTracker.delete(session.id);
+			this.waitingForNonPromptOutput.delete(session.id);
 			this.emit('sessionDestroyed', session);
 		}
 	}
@@ -197,18 +202,64 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		// Strip ANSI codes for pattern matching
 		const cleanRecentOutput = this.stripAnsi(recentOutput);
 
-		// Early return if no output to process
+		// Check for timeout-based idle even if no new output
 		if (!cleanRecentOutput.trim()) {
+			// No new output, but still check for idle timeout
+			const timeSinceActivity = Date.now() - session.lastActivity.getTime();
+			const waitingForNonPrompt =
+				this.waitingForNonPromptOutput.get(session.id) || false;
+
+			// Only transition to idle if:
+			// 1. Not waiting for input
+			// 2. Enough time has passed (3 seconds)
+			// 3. Not waiting for non-prompt output after "esc to interrupt"
+			if (
+				!waitingForNonPrompt &&
+				timeSinceActivity > 3000 &&
+				session.state !== 'idle' &&
+				session.state !== 'waiting_input'
+			) {
+				session.state = 'idle';
+				this.waitingStateTracker.set(session.id, false);
+				this.emit('sessionStateChanged', session);
+			}
+			// If waitingForNonPrompt is true, we stay in current state (busy) waiting for real output
 			return;
 		}
 
-		if (
-			// Check if output is just a prompt box
-			isPromptBoxOnly(cleanRecentOutput) ||
-			isUpdateSuggestionOnly(cleanRecentOutput)
-		) {
+		// Check if output contains "esc to interrupt"
+		const hasEscToInterrupt = cleanRecentOutput
+			.toLowerCase()
+			.includes('esc to interrupt');
+		const wasEscToInterruptActive =
+			this.escToInterruptTracker.get(session.id) || false;
+
+		// Update esc to interrupt tracker
+		if (hasEscToInterrupt) {
+			this.escToInterruptTracker.set(session.id, true);
+			this.waitingForNonPromptOutput.set(session.id, true);
+		}
+
+		// Check if output is just a prompt box
+		const isPromptBox = isPromptBoxOnly(cleanRecentOutput);
+
+		if (isPromptBox || isUpdateSuggestionOnly(cleanRecentOutput)) {
 			// Don't change state for prompt box only output
+			// But keep the waitingForNonPromptOutput flag active if it was set
 			return;
+		}
+
+		// If we have output after "esc to interrupt" that's not a prompt box, clear the trackers
+		const waitingForNonPrompt =
+			this.waitingForNonPromptOutput.get(session.id) || false;
+		if (
+			(wasEscToInterruptActive || waitingForNonPrompt) &&
+			hasNewOutput &&
+			!isPromptBox &&
+			!hasEscToInterrupt
+		) {
+			this.escToInterruptTracker.set(session.id, false);
+			this.waitingForNonPromptOutput.set(session.id, false);
 		}
 
 		// Check if waiting for input using actual Claude patterns
@@ -224,6 +275,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		if (isWaiting) {
 			newState = 'waiting_input';
 			this.waitingStateTracker.set(session.id, true);
+			// Clear the waiting for non-prompt output flag when entering waiting state
+			this.waitingForNonPromptOutput.set(session.id, false);
 		} else if (wasWaiting && isJustBottomBorder) {
 			// When Claude is waiting for input and user types, the prompt box bottom border
 			// may appear as a separate chunk of output due to terminal rendering delays.
@@ -232,18 +285,37 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			// and incorrect state representation. By maintaining the waiting state when we
 			// detect this pattern, we ensure smooth state transitions.
 			newState = 'waiting_input';
-		} else if (hasNewOutput) {
+		} else if (hasNewOutput && !wasEscToInterruptActive) {
 			// If we have new output that's not just a bottom border, session is active
+			// But not if we had "esc to interrupt" previously
 			newState = 'busy';
 			this.waitingStateTracker.set(session.id, false);
 		} else {
-			// No new output and no waiting patterns
+			// Check idle conditions
+			// Idle if: not waiting AND (no "esc to interrupt" OR has output after "esc to interrupt" that's not prompt box)
 			const timeSinceActivity = Date.now() - session.lastActivity.getTime();
-			if (timeSinceActivity > 3000) {
+			const waitingForNonPrompt =
+				this.waitingForNonPromptOutput.get(session.id) || false;
+
+			if (!isWaiting && !waitingForNonPrompt && timeSinceActivity > 3000) {
+				// Normal idle after 3 seconds when not waiting for non-prompt output
 				newState = 'idle';
 				this.waitingStateTracker.set(session.id, false);
+			} else if (
+				!isWaiting &&
+				(wasEscToInterruptActive || waitingForNonPrompt) &&
+				hasNewOutput &&
+				!isPromptBox &&
+				!hasEscToInterrupt
+			) {
+				// Idle when we had "esc to interrupt" and then got non-prompt output
+				newState = 'idle';
+				this.waitingStateTracker.set(session.id, false);
+			} else if (hasEscToInterrupt) {
+				// If we just got "esc to interrupt", keep busy state
+				newState = 'busy';
 			}
-			// else keep current state
+			// else keep current state (including staying busy if waiting for non-prompt output)
 		}
 
 		// Update state and emit event if changed
