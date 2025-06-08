@@ -162,4 +162,65 @@ export class WorktreeService {
 			};
 		}
 	}
+
+	mergeWorktree(
+		sourceBranch: string,
+		targetBranch: string,
+	): {success: boolean; error?: string} {
+		try {
+			// Get worktrees to find the target worktree path
+			const worktrees = this.getWorktrees();
+			const targetWorktree = worktrees.find(
+				wt => wt.branch.replace('refs/heads/', '') === targetBranch,
+			);
+
+			if (!targetWorktree) {
+				return {
+					success: false,
+					error: 'Target branch worktree not found',
+				};
+			}
+
+			// Perform the merge in the target worktree
+			execSync(`git merge "${sourceBranch}"`, {
+				cwd: targetWorktree.path,
+				encoding: 'utf8',
+			});
+
+			return {success: true};
+		} catch (error) {
+			return {
+				success: false,
+				error:
+					error instanceof Error ? error.message : 'Failed to merge branches',
+			};
+		}
+	}
+
+	deleteWorktreeByBranch(branch: string): {success: boolean; error?: string} {
+		try {
+			// Get worktrees to find the worktree by branch
+			const worktrees = this.getWorktrees();
+			const worktree = worktrees.find(
+				wt => wt.branch.replace('refs/heads/', '') === branch,
+			);
+
+			if (!worktree) {
+				return {
+					success: false,
+					error: 'Worktree not found for branch',
+				};
+			}
+
+			return this.deleteWorktree(worktree.path);
+		} catch (error) {
+			return {
+				success: false,
+				error:
+					error instanceof Error
+						? error.message
+						: 'Failed to delete worktree by branch',
+			};
+		}
+	}
 }
