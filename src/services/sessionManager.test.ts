@@ -1,6 +1,5 @@
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import {SessionManager} from './sessionManager.js';
-import {EventEmitter} from 'events';
 import type {IPty} from 'node-pty';
 
 // Create a mock PTY type
@@ -24,11 +23,11 @@ vi.mock('node-pty', () => ({
 			onData: ((handler: (data: string) => void) => {
 				mockPty.dataHandler = handler;
 				return {dispose: () => {}};
-			}) as any,
+			}) as IPty['onData'],
 			onExit: ((handler: (e: {exitCode: number; signal?: number}) => void) => {
 				mockPty.exitHandler = () => handler({exitCode: 0});
 				return {dispose: () => {}};
-			}) as any,
+			}) as IPty['onExit'],
 		};
 		return mockPty;
 	}),

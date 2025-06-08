@@ -2,6 +2,7 @@ import React, {useState, useEffect} from 'react';
 import {Box, Text, useInput} from 'ink';
 import {Worktree} from '../types/index.js';
 import {WorktreeService} from '../services/worktreeService.js';
+import Confirmation from './Confirmation.js';
 
 interface DeleteWorktreeProps {
 	onComplete: (worktreePaths: string[]) => void;
@@ -34,14 +35,7 @@ const DeleteWorktree: React.FC<DeleteWorktreeProps> = ({
 		}
 
 		if (confirmMode) {
-			if (input === 'y' || input === 'Y') {
-				const selectedPaths = Array.from(selectedIndices).map(
-					index => worktrees[index]!.path,
-				);
-				onComplete(selectedPaths);
-			} else if (input === 'n' || input === 'N' || key.escape) {
-				setConfirmMode(false);
-			}
+			// Confirmation component handles input
 			return;
 		}
 
@@ -83,7 +77,18 @@ const DeleteWorktree: React.FC<DeleteWorktreeProps> = ({
 			index => worktrees[index]!,
 		);
 
-		return (
+		const handleConfirm = () => {
+			const selectedPaths = Array.from(selectedIndices).map(
+				index => worktrees[index]!.path,
+			);
+			onComplete(selectedPaths);
+		};
+
+		const handleCancel = () => {
+			setConfirmMode(false);
+		};
+
+		const confirmMessage = (
 			<Box flexDirection="column">
 				<Text bold color="red">
 					⚠️ Delete Confirmation
@@ -96,10 +101,16 @@ const DeleteWorktree: React.FC<DeleteWorktreeProps> = ({
 						</Text>
 					))}
 				</Box>
-				<Text bold>
-					This will also delete their branches. Are you sure? (y/N)
-				</Text>
+				<Text bold>This will also delete their branches. Are you sure?</Text>
 			</Box>
+		);
+
+		return (
+			<Confirmation
+				message={confirmMessage}
+				onConfirm={handleConfirm}
+				onCancel={handleCancel}
+			/>
 		);
 	}
 
