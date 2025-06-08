@@ -4,6 +4,7 @@ import Menu from './Menu.js';
 import Session from './Session.js';
 import NewWorktree from './NewWorktree.js';
 import DeleteWorktree from './DeleteWorktree.js';
+import MergeWorktree from './MergeWorktree.js';
 import {SessionManager} from '../services/sessionManager.js';
 import {WorktreeService} from '../services/worktreeService.js';
 import {Worktree, Session as SessionType} from '../types/index.js';
@@ -14,7 +15,9 @@ type View =
 	| 'new-worktree'
 	| 'creating-worktree'
 	| 'delete-worktree'
-	| 'deleting-worktree';
+	| 'deleting-worktree'
+	| 'merge-worktree'
+	| 'merging-worktree';
 
 const App: React.FC = () => {
 	const {exit} = useApp();
@@ -67,6 +70,12 @@ const App: React.FC = () => {
 		// Check if this is the delete worktree option
 		if (worktree.path === 'DELETE_WORKTREE') {
 			setView('delete-worktree');
+			return;
+		}
+
+		// Check if this is the merge worktree option
+		if (worktree.path === 'MERGE_WORKTREE') {
+			setView('merge-worktree');
 			return;
 		}
 
@@ -155,6 +164,46 @@ const App: React.FC = () => {
 		handleReturnToMenu();
 	};
 
+	const handleMergeWorktree = async (
+		sourceBranch: string,
+		targetBranch: string,
+		deleteAfterMerge: boolean,
+		useRebase: boolean,
+	) => {
+		setView('merging-worktree');
+		setError(null);
+
+		// Perform the merge
+		const mergeResult = worktreeService.mergeWorktree(
+			sourceBranch,
+			targetBranch,
+			useRebase,
+		);
+
+		if (mergeResult.success) {
+			// If user wants to delete the merged branch
+			if (deleteAfterMerge) {
+				const deleteResult =
+					worktreeService.deleteWorktreeByBranch(sourceBranch);
+				if (!deleteResult.success) {
+					setError(deleteResult.error || 'Failed to delete merged worktree');
+					setView('merge-worktree');
+					return;
+				}
+			}
+			// Success - return to menu
+			handleReturnToMenu();
+		} else {
+			// Show error
+			setError(mergeResult.error || 'Failed to merge branches');
+			setView('merge-worktree');
+		}
+	};
+
+	const handleCancelMergeWorktree = () => {
+		handleReturnToMenu();
+	};
+
 	const handleExit = () => {
 		sessionManager.destroy();
 		exit();
@@ -226,6 +275,30 @@ const App: React.FC = () => {
 		return (
 			<Box flexDirection="column">
 				<Text color="red">Deleting worktrees...</Text>
+			</Box>
+		);
+	}
+
+	if (view === 'merge-worktree') {
+		return (
+			<Box flexDirection="column">
+				{error && (
+					<Box marginBottom={1}>
+						<Text color="red">Error: {error}</Text>
+					</Box>
+				)}
+				<MergeWorktree
+					onComplete={handleMergeWorktree}
+					onCancel={handleCancelMergeWorktree}
+				/>
+			</Box>
+		);
+	}
+
+	if (view === 'merging-worktree') {
+		return (
+			<Box flexDirection="column">
+				<Text color="green">Merging worktrees...</Text>
 			</Box>
 		);
 	}

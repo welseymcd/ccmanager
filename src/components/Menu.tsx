@@ -98,6 +98,10 @@ const Menu: React.FC<MenuProps> = ({
 			value: 'new-worktree',
 		});
 		menuItems.push({
+			label: 'Merge Worktree',
+			value: 'merge-worktree',
+		});
+		menuItems.push({
 			label: 'Delete Worktree',
 			value: 'delete-worktree',
 		});
@@ -124,6 +128,14 @@ const Menu: React.FC<MenuProps> = ({
 			// Handle in parent component
 			onSelectWorktree({
 				path: '',
+				branch: '',
+				isMainWorktree: false,
+				hasSession: false,
+			});
+		} else if (item.value === 'merge-worktree') {
+			// Handle in parent component - use special marker
+			onSelectWorktree({
+				path: 'MERGE_WORKTREE',
 				branch: '',
 				isMainWorktree: false,
 				hasSession: false,

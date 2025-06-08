@@ -162,4 +162,91 @@ export class WorktreeService {
 			};
 		}
 	}
+
+	mergeWorktree(
+		sourceBranch: string,
+		targetBranch: string,
+		useRebase: boolean = false,
+	): {success: boolean; error?: string} {
+		try {
+			// Get worktrees to find the target worktree path
+			const worktrees = this.getWorktrees();
+			const targetWorktree = worktrees.find(
+				wt => wt.branch.replace('refs/heads/', '') === targetBranch,
+			);
+
+			if (!targetWorktree) {
+				return {
+					success: false,
+					error: 'Target branch worktree not found',
+				};
+			}
+
+			// Perform the merge or rebase in the target worktree
+			if (useRebase) {
+				// For rebase, we need to checkout source branch and rebase it onto target
+				const sourceWorktree = worktrees.find(
+					wt => wt.branch.replace('refs/heads/', '') === sourceBranch,
+				);
+
+				if (!sourceWorktree) {
+					return {
+						success: false,
+						error: 'Source branch worktree not found',
+					};
+				}
+
+				// Rebase source branch onto target branch
+				execSync(`git rebase "${targetBranch}"`, {
+					cwd: sourceWorktree.path,
+					encoding: 'utf8',
+				});
+			} else {
+				// Regular merge
+				execSync(`git merge --no-ff "${sourceBranch}"`, {
+					cwd: targetWorktree.path,
+					encoding: 'utf8',
+				});
+			}
+
+			return {success: true};
+		} catch (error) {
+			return {
+				success: false,
+				error:
+					error instanceof Error
+						? error.message
+						: useRebase
+							? 'Failed to rebase branches'
+							: 'Failed to merge branches',
+			};
+		}
+	}
+
+	deleteWorktreeByBranch(branch: string): {success: boolean; error?: string} {
+		try {
+			// Get worktrees to find the worktree by branch
+			const worktrees = this.getWorktrees();
+			const worktree = worktrees.find(
+				wt => wt.branch.replace('refs/heads/', '') === branch,
+			);
+
+			if (!worktree) {
+				return {
+					success: false,
+					error: 'Worktree not found for branch',
+				};
+			}
+
+			return this.deleteWorktree(worktree.path);
+		} catch (error) {
+			return {
+				success: false,
+				error:
+					error instanceof Error
+						? error.message
+						: 'Failed to delete worktree by branch',
+			};
+		}
+	}
 }
