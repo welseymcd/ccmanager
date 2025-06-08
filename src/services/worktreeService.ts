@@ -203,7 +203,7 @@ export class WorktreeService {
 				});
 			} else {
 				// Regular merge
-				execSync(`git merge "${sourceBranch}"`, {
+				execSync(`git merge --no-ff "${sourceBranch}"`, {
 					cwd: targetWorktree.path,
 					encoding: 'utf8',
 				});
