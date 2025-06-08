@@ -2,6 +2,7 @@ import React, {useState, useEffect} from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
 import {WorktreeService} from '../services/worktreeService.js';
+import Confirmation from './Confirmation.js';
 
 interface MergeWorktreeProps {
 	onComplete: (
@@ -33,8 +34,6 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 	const [sourceBranch, setSourceBranch] = useState<string>('');
 	const [targetBranch, setTargetBranch] = useState<string>('');
 	const [branchItems, setBranchItems] = useState<BranchItem[]>([]);
-	const [confirmFocused, setConfirmFocused] = useState(true);
-	const [deleteFocused, setDeleteFocused] = useState(true);
 	const [useRebase, setUseRebase] = useState(false);
 	const [operationFocused, setOperationFocused] = useState(false);
 
@@ -65,25 +64,6 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 				setUseRebase(newOperationFocused);
 			} else if (key.return) {
 				setStep('confirm-merge');
-			}
-		} else if (step === 'confirm-merge') {
-			if (key.leftArrow || key.rightArrow) {
-				setConfirmFocused(!confirmFocused);
-			} else if (key.return) {
-				if (confirmFocused) {
-					// Proceed with merge
-					setStep('delete-confirm');
-				} else {
-					// Cancel
-					onCancel();
-				}
-			}
-		} else if (step === 'delete-confirm') {
-			if (key.leftArrow || key.rightArrow) {
-				setDeleteFocused(!deleteFocused);
-			} else if (key.return) {
-				// Complete the merge with delete preference
-				onComplete(sourceBranch, targetBranch, deleteFocused, useRebase);
 			}
 		}
 	});
@@ -206,7 +186,7 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 	}
 
 	if (step === 'confirm-merge') {
-		return (
+		const confirmMessage = (
 			<Box flexDirection="column">
 				<Box marginBottom={1}>
 					<Text bold color="green">
@@ -214,47 +194,26 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 					</Text>
 				</Box>
 
-				<Box marginBottom={1}>
-					<Text>
-						{useRebase ? 'Rebase' : 'Merge'}{' '}
-						<Text color="yellow">{sourceBranch}</Text>{' '}
-						{useRebase ? 'onto' : 'into'}{' '}
-						<Text color="yellow">{targetBranch}</Text>?
-					</Text>
-				</Box>
-
-				<Box>
-					<Box marginRight={2}>
-						<Text
-							color={confirmFocused ? 'green' : 'white'}
-							inverse={confirmFocused}
-						>
-							{' '}
-							Yes{' '}
-						</Text>
-					</Box>
-					<Box>
-						<Text
-							color={!confirmFocused ? 'red' : 'white'}
-							inverse={!confirmFocused}
-						>
-							{' '}
-							No{' '}
-						</Text>
-					</Box>
-				</Box>
-
-				<Box marginTop={1}>
-					<Text dimColor>
-						Use ← → to navigate, Enter to select, ESC to cancel
-					</Text>
-				</Box>
+				<Text>
+					{useRebase ? 'Rebase' : 'Merge'}{' '}
+					<Text color="yellow">{sourceBranch}</Text>{' '}
+					{useRebase ? 'onto' : 'into'}{' '}
+					<Text color="yellow">{targetBranch}</Text>?
+				</Text>
 			</Box>
+		);
+
+		return (
+			<Confirmation
+				message={confirmMessage}
+				onConfirm={() => setStep('delete-confirm')}
+				onCancel={onCancel}
+			/>
 		);
 	}
 
 	if (step === 'delete-confirm') {
-		return (
+		const deleteMessage = (
 			<Box flexDirection="column">
 				<Box marginBottom={1}>
 					<Text bold color="green">
@@ -262,38 +221,23 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 					</Text>
 				</Box>
 
-				<Box marginBottom={1}>
-					<Text>
-						Delete the merged branch <Text color="yellow">{sourceBranch}</Text>{' '}
-						and its worktree?
-					</Text>
-				</Box>
-
-				<Box>
-					<Box marginRight={2}>
-						<Text
-							color={deleteFocused ? 'green' : 'white'}
-							inverse={deleteFocused}
-						>
-							{' '}
-							Yes{' '}
-						</Text>
-					</Box>
-					<Box>
-						<Text
-							color={!deleteFocused ? 'red' : 'white'}
-							inverse={!deleteFocused}
-						>
-							{' '}
-							No{' '}
-						</Text>
-					</Box>
-				</Box>
-
-				<Box marginTop={1}>
-					<Text dimColor>Use ← → to navigate, Enter to select</Text>
-				</Box>
+				<Text>
+					Delete the merged branch <Text color="yellow">{sourceBranch}</Text>{' '}
+					and its worktree?
+				</Text>
 			</Box>
+		);
+
+		return (
+			<Confirmation
+				message={deleteMessage}
+				onConfirm={() =>
+					onComplete(sourceBranch, targetBranch, true, useRebase)
+				}
+				onCancel={() =>
+					onComplete(sourceBranch, targetBranch, false, useRebase)
+				}
+			/>
 		);
 	}
 
