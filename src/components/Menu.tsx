@@ -1,15 +1,13 @@
 import React, {useState, useEffect} from 'react';
-import {Box, Text, useInput} from 'ink';
+import {Box, Text} from 'ink';
 import SelectInput from 'ink-select-input';
 import {Worktree, Session} from '../types/index.js';
 import {WorktreeService} from '../services/worktreeService.js';
 import {SessionManager} from '../services/sessionManager.js';
-import {shortcutManager} from '../services/shortcutManager.js';
 
 interface MenuProps {
 	sessionManager: SessionManager;
 	onSelectWorktree: (worktree: Worktree) => void;
-	onExit: () => void;
 }
 
 interface MenuItem {
@@ -18,11 +16,7 @@ interface MenuItem {
 	worktree?: Worktree;
 }
 
-const Menu: React.FC<MenuProps> = ({
-	sessionManager,
-	onSelectWorktree,
-	onExit,
-}) => {
+const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree}) => {
 	const [worktrees, setWorktrees] = useState<Worktree[]>([]);
 	const [sessions, setSessions] = useState<Session[]>([]);
 	const [items, setItems] = useState<MenuItem[]>([]);
@@ -110,24 +104,11 @@ const Menu: React.FC<MenuProps> = ({
 			label: 'Configure Shortcuts',
 			value: 'configure-shortcuts',
 		});
-		menuItems.push({
-			label: 'Exit',
-			value: 'exit',
-		});
-
 		setItems(menuItems);
 	}, [worktrees, sessions]);
 
-	useInput((input, key) => {
-		if (shortcutManager.matchesShortcut('exitApp', input, key)) {
-			onExit();
-		}
-	});
-
 	const handleSelect = (item: MenuItem) => {
-		if (item.value === 'exit') {
-			onExit();
-		} else if (item.value === 'separator') {
+		if (item.value === 'separator') {
 			// Do nothing for separator
 		} else if (item.value === 'new-worktree') {
 			// Handle in parent component
@@ -184,10 +165,7 @@ const Menu: React.FC<MenuProps> = ({
 
 			<Box marginTop={1} flexDirection="column">
 				<Text dimColor>Status: 🔴 Busy 🟠 Waiting 🔵 Idle</Text>
-				<Text dimColor>
-					Controls: ↑↓ Navigate Enter Select{' '}
-					{shortcutManager.getShortcutDisplay('exitApp')} Exit
-				</Text>
+				<Text dimColor>Controls: ↑↓ Navigate Enter Select</Text>
 			</Box>
 		</Box>
 	);
