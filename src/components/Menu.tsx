@@ -4,15 +4,11 @@ import SelectInput from 'ink-select-input';
 import {Worktree, Session} from '../types/index.js';
 import {WorktreeService} from '../services/worktreeService.js';
 import {SessionManager} from '../services/sessionManager.js';
-<<<<<<< HEAD
-import {shortcutManager} from '../services/shortcutManager.js';
 import {
 	STATUS_ICONS,
 	STATUS_LABELS,
 	getStatusDisplay,
 } from '../constants/statusIcons.js';
-=======
->>>>>>> feature/exit-shrotcut
 
 interface MenuProps {
 	sessionManager: SessionManager;
