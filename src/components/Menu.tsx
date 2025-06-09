@@ -5,6 +5,11 @@ import {Worktree, Session} from '../types/index.js';
 import {WorktreeService} from '../services/worktreeService.js';
 import {SessionManager} from '../services/sessionManager.js';
 import {shortcutManager} from '../services/shortcutManager.js';
+import {
+	STATUS_ICONS,
+	STATUS_LABELS,
+	getStatusDisplay,
+} from '../constants/statusIcons.js';
 
 interface MenuProps {
 	sessionManager: SessionManager;
@@ -66,17 +71,7 @@ const Menu: React.FC<MenuProps> = ({
 			let status = '';
 
 			if (session) {
-				switch (session.state) {
-					case 'busy':
-						status = ' [🔴 Busy]';
-						break;
-					case 'waiting_input':
-						status = ' [🟠 Waiting]';
-						break;
-					case 'idle':
-						status = ' [🔵 Idle]';
-						break;
-				}
+				status = ` [${getStatusDisplay(session.state)}]`;
 			}
 
 			const branchName = wt.branch.replace('refs/heads/', '');
@@ -183,7 +178,11 @@ const Menu: React.FC<MenuProps> = ({
 			<SelectInput items={items} onSelect={handleSelect} isFocused={true} />
 
 			<Box marginTop={1} flexDirection="column">
-				<Text dimColor>Status: 🔴 Busy 🟠 Waiting 🔵 Idle</Text>
+				<Text dimColor>
+					Status: {STATUS_ICONS.BUSY} {STATUS_LABELS.BUSY}{' '}
+					{STATUS_ICONS.WAITING} {STATUS_LABELS.WAITING} {STATUS_ICONS.IDLE}{' '}
+					{STATUS_LABELS.IDLE}
+				</Text>
 				<Text dimColor>
 					Controls: ↑↓ Navigate Enter Select{' '}
 					{shortcutManager.getShortcutDisplay('exitApp')} Exit
