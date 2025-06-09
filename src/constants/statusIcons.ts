@@ -10,6 +10,13 @@ export const STATUS_LABELS = {
 	IDLE: 'Idle',
 } as const;
 
+export const MENU_ICONS = {
+	NEW_WORKTREE: '⊕',
+	MERGE_WORKTREE: '⇄',
+	DELETE_WORKTREE: '✕',
+	CONFIGURE_SHORTCUTS: '⌨',
+} as const;
+
 export const getStatusDisplay = (
 	status: 'busy' | 'waiting_input' | 'idle',
 ): string => {
