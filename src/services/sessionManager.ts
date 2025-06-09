@@ -1,6 +1,7 @@
 import {spawn} from 'node-pty';
 import {Session, SessionManager as ISessionManager} from '../types/index.js';
 import {EventEmitter} from 'events';
+import {includesPromptBoxBottomBorder} from '../utils/promptDetector.js';
 
 export class SessionManager extends EventEmitter implements ISessionManager {
 	sessions: Map<string, Session>;
@@ -19,14 +20,6 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			.replace(/\r/g, '') // Carriage returns
 			.replace(/^[0-9;]+m/gm, '') // Orphaned color codes at line start
 			.replace(/[0-9]+;[0-9]+;[0-9;]+m/g, ''); // Orphaned 24-bit color codes
-	}
-
-	private includesPromptBoxBottomBorder(output: string): boolean {
-		// Check if the output includes a prompt box bottom border
-		return output
-			.trim()
-			.split('\n')
-			.some(line => /^╰─+╯$/.test(line));
 	}
 
 	constructor() {
@@ -115,7 +108,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 				return;
 			}
 
-			const hasBottomBorder = this.includesPromptBoxBottomBorder(cleanData);
+			const hasBottomBorder = includesPromptBoxBottomBorder(cleanData);
 			const hasWaitingPrompt = cleanData.includes('│ Do you want');
 			const wasWaitingWithBottomBorder =
 				this.waitingWithBottomBorder.get(session.id) || false;
