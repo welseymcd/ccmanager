@@ -2,43 +2,34 @@
 
 ## Overview
 
-CCManager is a TUI application for managing multiple Claude Code sessions across Git worktrees. It allows you to run Claude Code in parallel across different worktrees and switch between them seamlessly.
+CCManager is a TUI application for managing multiple Claude Code sessions across Git worktrees. It allows you to run Claude Code in parallel across different worktrees, switch between them seamlessly, and manage worktrees directly from the interface.
 
 ## Project Structure
 
 ```
 ccmanager/
 ├── src/
-│   ├── index.tsx           # Entry point
-│   ├── app.tsx            # Main application component
-│   ├── components/        # UI components
-│   │   ├── Menu.tsx      # Main menu view
-│   │   ├── Session.tsx   # Claude Code session view
-│   │   └── StatusBar.tsx # Status indicators
-│   ├── hooks/            # Custom React hooks
-│   │   ├── useWorktree.ts   # Git worktree management
-│   │   ├── useSession.ts    # Session lifecycle
-│   │   └── useKeyboard.ts   # Global keyboard shortcuts
-│   ├── services/         # Business logic
-│   │   ├── sessionManager.ts # Claude Code process management
-│   │   ├── worktreeService.ts # Git operations
-│   │   └── stateDetector.ts  # Session state detection
-│   └── types/            # TypeScript definitions
-│       └── index.ts
+│   ├── cli.tsx             # Entry point with CLI argument parsing
+│   ├── components/         # UI components
+│   ├── services/           # Business logic
+│   ├── utils/              # Utility functions
+│   ├── constants/          # Shared constants
+│   └── types/              # TypeScript definitions
 ├── package.json
 ├── tsconfig.json
-├── .eslintrc.js
-└── .prettierrc
+├── eslint.config.js        # Modern flat ESLint configuration
+├── vitest.config.ts        # Vitest test configuration
+└── shortcuts.example.json  # Example shortcut configuration
 ```
 
 ## Key Dependencies
 
 - **ink** - React for CLI apps
 - **ink-select-input** - Menu selection component
+- **ink-text-input** - Text input fields for forms
 - **ink-spinner** - Loading indicators
 - **node-pty** - PTY for interactive sessions
-- **simple-git** - Git operations
-- **chalk** - Terminal styling
+- **vitest** - Modern testing framework
 
 ## Commands
 
@@ -94,26 +85,38 @@ npm run typecheck
 - **Type Safety**: TypeScript provides compile-time type checking
 - **Rich Ecosystem**: Access to npm packages for PTY, Git, and more
 - **Rapid Development**: Hot reloading and component reusability
+- **ES Modules**: Modern JavaScript module system for better tree-shaking
 
 ### Session Management
 
 - Each worktree maintains its own Claude Code process
 - Sessions are managed via `node-pty` for full terminal emulation
 - Process lifecycle tracked in React state with automatic cleanup
+- Session states tracked with sophisticated prompt detection
 
 ### UI Components
 
-- **Menu Component**: Uses `ink-select-input` for navigation
-- **Session Component**: Renders PTY output with ANSI color support
-- **StatusBar**: Shows session states and keyboard shortcuts
+- **App Component**: Main application container with view routing
+- **Menu Component**: Worktree list with status indicators and actions
+- **Session Component**: Full PTY rendering with ANSI color support
+- **Worktree Management**: Create, delete, and merge worktrees via dedicated forms
+- **Shortcut Configuration**: Customizable keyboard shortcuts with visual editor
 
 ### State Detection
 
-Claude Code states are detected by output analysis:
+Claude Code states are detected by advanced output analysis in `promptDetector.ts`:
 
-- **Waiting for input**: Detecting prompts (">", "Press Enter")
-- **Task in progress**: Active output without prompts
-- **Needs interaction**: Specific interactive prompts
+- **Waiting for input**: Detects various prompt patterns including "Do you want" questions
+- **Busy**: Detects "ESC to interrupt" and active processing
+- **Task complete**: Identifies when Claude is ready for new input
+- **Bottom border tracking**: Handles prompt box UI elements
+
+### Keyboard Shortcuts
+
+- Fully configurable shortcuts stored in `~/.config/ccmanager/shortcuts.json`
+- Platform-aware configuration paths (Windows uses `%APPDATA%`)
+- Default shortcuts for common actions (back, quit, refresh, etc.)
+- Visual configuration UI accessible from main menu
 
 ## Development Guidelines
 
@@ -165,10 +168,32 @@ prompt();
 
 ```tsx
 useInput((input, key) => {
-	if (key.ctrl && input === 'q') {
+	const shortcuts = shortcutManager.getShortcuts();
+
+	if (shortcutManager.matchesShortcut(shortcuts.back, input, key)) {
 		// Return to menu
 	}
+
+	if (shortcutManager.matchesShortcut(shortcuts.quit, input, key)) {
+		// Exit application
+	}
 });
+```
+
+### Worktree Management
+
+```typescript
+// List worktrees
+const worktrees = await worktreeService.listWorktrees();
+
+// Create new worktree
+await worktreeService.createWorktree(branchName, path);
+
+// Delete worktree
+await worktreeService.deleteWorktree(worktreePath, { force: true });
+
+// Merge worktree branch
+await worktreeService.mergeWorktree(worktreePath, targetBranch);
 ```
 
 ## Common Issues
@@ -191,6 +216,35 @@ useInput((input, key) => {
 - Handle orphaned processes gracefully
 - Implement proper signal handling
 
+### Prompt Detection
+
+- Handle various Claude Code output formats
+- Track prompt box borders and UI elements
+- Maintain state history for accurate detection
+
+### Configuration Management
+
+- Create config directory if it doesn't exist
+- Handle platform-specific paths correctly
+- Provide sensible defaults for shortcuts
+
+## Features
+
+### Core Features
+
+- **Multi-Session Management**: Run Claude Code in multiple worktrees simultaneously
+- **Worktree Operations**: Create, delete, and merge worktrees from the UI
+- **Session State Tracking**: Visual indicators for session states (idle, busy, waiting)
+- **Customizable Shortcuts**: Configure keyboard shortcuts via UI or JSON file
+- **Cross-Platform**: Works on Windows, macOS, and Linux
+
+### User Interface
+
+- **Main Menu**: Lists all worktrees with status indicators
+- **Session View**: Full terminal emulation with Claude Code
+- **Forms**: Text input for creating worktrees and configuring settings
+- **Confirmation Dialogs**: Safety prompts for destructive actions
+
 ## Future Enhancements
 
 - Session recording and playback
@@ -198,3 +252,5 @@ useInput((input, key) => {
 - Integration with Claude Code's `-r` flag
 - Theme customization
 - Plugin system for extensions
+- Session history and search
+- Worktree templates
