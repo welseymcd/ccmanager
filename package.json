@@ -1,8 +1,24 @@
 {
-	"name": "ccmanager-202506042324",
-	"version": "0.0.0",
+	"name": "ccmanager",
+	"version": "0.0.1",
+	"description": "TUI application for managing multiple Claude Code sessions across Git worktrees",
 	"license": "MIT",
-	"bin": "dist/cli.js",
+	"author": "Kodai Kabasawa",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/kbwo/ccmanager.git"
+	},
+	"keywords": [
+		"claude",
+		"code",
+		"worktree",
+		"git",
+		"tui",
+		"cli"
+	],
+	"bin": {
+		"ccmanager": "dist/cli.js"
+	},
 	"type": "module",
 	"engines": {
 		"node": ">=16"
@@ -10,12 +26,14 @@
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsc --watch",
-		"start": "node dist/index.js",
+		"start": "node dist/cli.js",
 		"test": "vitest",
 		"test:run": "vitest run",
 		"lint": "eslint src",
 		"lint:fix": "eslint src --fix",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"prepublishOnly": "npm run lint && npm run typecheck && npm run test:run && npm run build",
+		"prepare": "npm run build"
 	},
 	"files": [
 		"dist"
