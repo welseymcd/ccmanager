@@ -39,8 +39,6 @@ export class ShortcutManager {
 					returnToMenu:
 						this.validateShortcut(loaded.returnToMenu) ||
 						DEFAULT_SHORTCUTS.returnToMenu,
-					exitApp:
-						this.validateShortcut(loaded.exitApp) || DEFAULT_SHORTCUTS.exitApp,
 					cancel:
 						this.validateShortcut(loaded.cancel) || DEFAULT_SHORTCUTS.cancel,
 				};
@@ -103,8 +101,6 @@ export class ShortcutManager {
 			returnToMenu:
 				this.validateShortcut(shortcuts.returnToMenu) ||
 				this.shortcuts.returnToMenu,
-			exitApp:
-				this.validateShortcut(shortcuts.exitApp) || this.shortcuts.exitApp,
 			cancel: this.validateShortcut(shortcuts.cancel) || this.shortcuts.cancel,
 		};
 

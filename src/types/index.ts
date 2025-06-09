@@ -35,12 +35,10 @@ export interface ShortcutKey {
 
 export interface ShortcutConfig {
 	returnToMenu: ShortcutKey;
-	exitApp: ShortcutKey;
 	cancel: ShortcutKey;
 }
 
 export const DEFAULT_SHORTCUTS: ShortcutConfig = {
 	returnToMenu: {ctrl: true, key: 'e'},
-	exitApp: {ctrl: true, key: 'q'},
 	cancel: {key: 'escape'},
 };

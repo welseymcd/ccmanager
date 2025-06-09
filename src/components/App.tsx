@@ -23,7 +23,7 @@ type View =
 	| 'configure-shortcuts';
 
 const App: React.FC = () => {
-	const {exit} = useApp();
+	useApp();
 	const [view, setView] = useState<View>('menu');
 	const [sessionManager] = useState(() => new SessionManager());
 	const [worktreeService] = useState(() => new WorktreeService());
@@ -213,18 +213,12 @@ const App: React.FC = () => {
 		handleReturnToMenu();
 	};
 
-	const handleExit = () => {
-		sessionManager.destroy();
-		exit();
-	};
-
 	if (view === 'menu') {
 		return (
 			<Menu
 				key={menuKey}
 				sessionManager={sessionManager}
 				onSelectWorktree={handleSelectWorktree}
-				onExit={handleExit}
 			/>
 		);
 	}
