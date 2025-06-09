@@ -15,6 +15,7 @@ export const MENU_ICONS = {
 	MERGE_WORKTREE: '⇄',
 	DELETE_WORKTREE: '✕',
 	CONFIGURE_SHORTCUTS: '⌨',
+	EXIT: '⏻',
 } as const;
 
 export const getStatusDisplay = (

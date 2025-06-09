@@ -23,7 +23,7 @@ type View =
 	| 'configure-shortcuts';
 
 const App: React.FC = () => {
-	useApp();
+	const {exit} = useApp();
 	const [view, setView] = useState<View>('menu');
 	const [sessionManager] = useState(() => new SessionManager());
 	const [worktreeService] = useState(() => new WorktreeService());
@@ -85,6 +85,13 @@ const App: React.FC = () => {
 		// Check if this is the configure shortcuts option
 		if (worktree.path === 'CONFIGURE_SHORTCUTS') {
 			setView('configure-shortcuts');
+			return;
+		}
+
+		// Check if this is the exit application option
+		if (worktree.path === 'EXIT_APPLICATION') {
+			sessionManager.destroy();
+			exit();
 			return;
 		}
 
