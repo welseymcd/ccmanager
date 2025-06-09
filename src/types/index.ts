@@ -1,5 +1,7 @@
 import {IPty} from 'node-pty';
 
+export type SessionState = 'idle' | 'busy' | 'waiting_input';
+
 export interface Worktree {
 	path: string;
 	branch: string;
@@ -11,7 +13,7 @@ export interface Session {
 	id: string;
 	worktreePath: string;
 	process: IPty;
-	state: 'idle' | 'busy' | 'waiting_input';
+	state: SessionState;
 	output: string[]; // Recent output for state detection
 	outputHistory: Buffer[]; // Full output history as buffers
 	lastActivity: Date;
