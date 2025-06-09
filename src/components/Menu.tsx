@@ -7,6 +7,7 @@ import {SessionManager} from '../services/sessionManager.js';
 import {
 	STATUS_ICONS,
 	STATUS_LABELS,
+	MENU_ICONS,
 	getStatusDisplay,
 } from '../constants/statusIcons.js';
 
@@ -84,19 +85,19 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree}) => {
 			value: 'separator',
 		});
 		menuItems.push({
-			label: 'New Worktree',
+			label: `${MENU_ICONS.NEW_WORKTREE} New Worktree`,
 			value: 'new-worktree',
 		});
 		menuItems.push({
-			label: 'Merge Worktree',
+			label: `${MENU_ICONS.MERGE_WORKTREE} Merge Worktree`,
 			value: 'merge-worktree',
 		});
 		menuItems.push({
-			label: 'Delete Worktree',
+			label: `${MENU_ICONS.DELETE_WORKTREE} Delete Worktree`,
 			value: 'delete-worktree',
 		});
 		menuItems.push({
-			label: 'Configure Shortcuts',
+			label: `${MENU_ICONS.CONFIGURE_SHORTCUTS} Configure Shortcuts`,
 			value: 'configure-shortcuts',
 		});
 		setItems(menuItems);
