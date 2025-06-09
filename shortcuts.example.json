@@ -1,0 +1,13 @@
+{
+  "returnToMenu": {
+    "ctrl": true,
+    "key": "r"
+  },
+  "exitApp": {
+    "ctrl": true,
+    "key": "x"
+  },
+  "cancel": {
+    "key": "escape"
+  }
+}

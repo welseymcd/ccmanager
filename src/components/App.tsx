@@ -5,9 +5,11 @@ import Session from './Session.js';
 import NewWorktree from './NewWorktree.js';
 import DeleteWorktree from './DeleteWorktree.js';
 import MergeWorktree from './MergeWorktree.js';
+import ConfigureShortcuts from './ConfigureShortcuts.js';
 import {SessionManager} from '../services/sessionManager.js';
 import {WorktreeService} from '../services/worktreeService.js';
 import {Worktree, Session as SessionType} from '../types/index.js';
+import {shortcutManager} from '../services/shortcutManager.js';
 
 type View =
 	| 'menu'
@@ -17,7 +19,8 @@ type View =
 	| 'delete-worktree'
 	| 'deleting-worktree'
 	| 'merge-worktree'
-	| 'merging-worktree';
+	| 'merging-worktree'
+	| 'configure-shortcuts';
 
 const App: React.FC = () => {
 	const {exit} = useApp();
@@ -76,6 +79,12 @@ const App: React.FC = () => {
 		// Check if this is the merge worktree option
 		if (worktree.path === 'MERGE_WORKTREE') {
 			setView('merge-worktree');
+			return;
+		}
+
+		// Check if this is the configure shortcuts option
+		if (worktree.path === 'CONFIGURE_SHORTCUTS') {
+			setView('configure-shortcuts');
 			return;
 		}
 
@@ -222,12 +231,20 @@ const App: React.FC = () => {
 
 	if (view === 'session' && activeSession) {
 		return (
-			<Session
-				key={activeSession.id}
-				session={activeSession}
-				sessionManager={sessionManager}
-				onReturnToMenu={handleReturnToMenu}
-			/>
+			<Box flexDirection="column">
+				<Session
+					key={activeSession.id}
+					session={activeSession}
+					sessionManager={sessionManager}
+					onReturnToMenu={handleReturnToMenu}
+				/>
+				<Box marginTop={1}>
+					<Text dimColor>
+						Press {shortcutManager.getShortcutDisplay('returnToMenu')} to return
+						to menu
+					</Text>
+				</Box>
+			</Box>
 		);
 	}
 
@@ -301,6 +318,10 @@ const App: React.FC = () => {
 				<Text color="green">Merging worktrees...</Text>
 			</Box>
 		);
+	}
+
+	if (view === 'configure-shortcuts') {
+		return <ConfigureShortcuts onComplete={handleReturnToMenu} />;
 	}
 
 	return null;

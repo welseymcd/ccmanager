@@ -3,6 +3,7 @@ import {Box, Text, useInput} from 'ink';
 import {Worktree} from '../types/index.js';
 import {WorktreeService} from '../services/worktreeService.js';
 import Confirmation from './Confirmation.js';
+import {shortcutManager} from '../services/shortcutManager.js';
 
 interface DeleteWorktreeProps {
 	onComplete: (worktreePaths: string[]) => void;
@@ -58,7 +59,7 @@ const DeleteWorktree: React.FC<DeleteWorktreeProps> = ({
 			if (selectedIndices.size > 0) {
 				setConfirmMode(true);
 			}
-		} else if (key.escape) {
+		} else if (shortcutManager.matchesShortcut('cancel', input, key)) {
 			onCancel();
 		}
 	});
@@ -67,7 +68,9 @@ const DeleteWorktree: React.FC<DeleteWorktreeProps> = ({
 		return (
 			<Box flexDirection="column">
 				<Text color="yellow">No worktrees available to delete.</Text>
-				<Text dimColor>Press Esc to return to menu</Text>
+				<Text dimColor>
+					Press {shortcutManager.getShortcutDisplay('cancel')} to return to menu
+				</Text>
 			</Box>
 		);
 	}
@@ -148,7 +151,8 @@ const DeleteWorktree: React.FC<DeleteWorktreeProps> = ({
 
 			<Box marginTop={1} flexDirection="column">
 				<Text dimColor>
-					Controls: ↑↓ Navigate, Space Select, Enter Confirm, Esc Cancel
+					Controls: ↑↓ Navigate, Space Select, Enter Confirm,{' '}
+					{shortcutManager.getShortcutDisplay('cancel')} Cancel
 				</Text>
 				{selectedIndices.size > 0 && (
 					<Text color="yellow">

@@ -3,6 +3,7 @@ import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
 import {WorktreeService} from '../services/worktreeService.js';
 import Confirmation from './Confirmation.js';
+import {shortcutManager} from '../services/shortcutManager.js';
 
 interface MergeWorktreeProps {
 	onComplete: (
@@ -51,8 +52,8 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 		setBranchItems(items);
 	}, []);
 
-	useInput((_input, key) => {
-		if (key.escape) {
+	useInput((input, key) => {
+		if (shortcutManager.matchesShortcut('cancel', input, key)) {
 			onCancel();
 			return;
 		}
@@ -101,7 +102,9 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 				/>
 
 				<Box marginTop={1}>
-					<Text dimColor>Press ESC to cancel</Text>
+					<Text dimColor>
+						Press {shortcutManager.getShortcutDisplay('cancel')} to cancel
+					</Text>
 				</Box>
 			</Box>
 		);
@@ -133,7 +136,9 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 				/>
 
 				<Box marginTop={1}>
-					<Text dimColor>Press ESC to cancel</Text>
+					<Text dimColor>
+						Press {shortcutManager.getShortcutDisplay('cancel')} to cancel
+					</Text>
 				</Box>
 			</Box>
 		);
@@ -178,7 +183,8 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 
 				<Box marginTop={1}>
 					<Text dimColor>
-						Use ← → to navigate, Enter to select, ESC to cancel
+						Use ← → to navigate, Enter to select,{' '}
+						{shortcutManager.getShortcutDisplay('cancel')} to cancel
 					</Text>
 				</Box>
 			</Box>

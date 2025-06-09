@@ -25,3 +25,22 @@ export interface SessionManager {
 	destroySession(worktreePath: string): void;
 	getAllSessions(): Session[];
 }
+
+export interface ShortcutKey {
+	ctrl?: boolean;
+	alt?: boolean;
+	shift?: boolean;
+	key: string;
+}
+
+export interface ShortcutConfig {
+	returnToMenu: ShortcutKey;
+	exitApp: ShortcutKey;
+	cancel: ShortcutKey;
+}
+
+export const DEFAULT_SHORTCUTS: ShortcutConfig = {
+	returnToMenu: {ctrl: true, key: 'e'},
+	exitApp: {ctrl: true, key: 'q'},
+	cancel: {key: 'escape'},
+};
