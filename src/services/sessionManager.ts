@@ -1,5 +1,9 @@
 import {spawn} from 'node-pty';
-import {Session, SessionManager as ISessionManager} from '../types/index.js';
+import {
+	Session,
+	SessionManager as ISessionManager,
+	SessionState,
+} from '../types/index.js';
 import {EventEmitter} from 'events';
 import {includesPromptBoxBottomBorder} from '../utils/promptDetector.js';
 
@@ -20,6 +24,47 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			.replace(/\r/g, '') // Carriage returns
 			.replace(/^[0-9;]+m/gm, '') // Orphaned color codes at line start
 			.replace(/[0-9]+;[0-9]+;[0-9;]+m/g, ''); // Orphaned 24-bit color codes
+	}
+
+	detectSessionState(
+		cleanData: string,
+		currentState: SessionState,
+		sessionId: string,
+	): SessionState {
+		const hasBottomBorder = includesPromptBoxBottomBorder(cleanData);
+		const hasWaitingPrompt = cleanData.includes('│ Do you want');
+		const wasWaitingWithBottomBorder =
+			this.waitingWithBottomBorder.get(sessionId) || false;
+
+		let newState = currentState;
+
+		// Check if current state is waiting and this is just a prompt box bottom border
+		if (hasWaitingPrompt) {
+			newState = 'waiting_input';
+			// Check if this same data also contains the bottom border
+			if (hasBottomBorder) {
+				this.waitingWithBottomBorder.set(sessionId, true);
+			} else {
+				this.waitingWithBottomBorder.set(sessionId, false);
+			}
+		} else if (
+			currentState === 'waiting_input' &&
+			hasBottomBorder &&
+			!hasWaitingPrompt &&
+			!wasWaitingWithBottomBorder
+		) {
+			// Keep the waiting state and mark that we've seen the bottom border
+			newState = 'waiting_input';
+			this.waitingWithBottomBorder.set(sessionId, true);
+		} else if (cleanData.toLowerCase().includes('esc to interrupt')) {
+			newState = 'busy';
+			this.waitingWithBottomBorder.set(sessionId, false);
+		} else {
+			newState = 'idle';
+			this.waitingWithBottomBorder.set(sessionId, false);
+		}
+
+		return newState;
 	}
 
 	constructor() {
@@ -108,40 +153,9 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 				return;
 			}
 
-			const hasBottomBorder = includesPromptBoxBottomBorder(cleanData);
-			const hasWaitingPrompt = cleanData.includes('│ Do you want');
-			const wasWaitingWithBottomBorder =
-				this.waitingWithBottomBorder.get(session.id) || false;
 			// Detect state based on the new data
 			const oldState = session.state;
-			let newState = oldState;
-
-			// Check if current state is waiting and this is just a prompt box bottom border
-			if (hasWaitingPrompt) {
-				newState = 'waiting_input';
-				// Check if this same data also contains the bottom border
-				if (hasBottomBorder) {
-					this.waitingWithBottomBorder.set(session.id, true);
-				} else {
-					this.waitingWithBottomBorder.set(session.id, false);
-				}
-				newState = 'waiting_input';
-			} else if (
-				oldState === 'waiting_input' &&
-				hasBottomBorder &&
-				!hasWaitingPrompt &&
-				!wasWaitingWithBottomBorder
-			) {
-				// Keep the waiting state and mark that we've seen the bottom border
-				newState = 'waiting_input';
-				this.waitingWithBottomBorder.set(session.id, true);
-			} else if (cleanData.toLowerCase().includes('esc to interrupt')) {
-				newState = 'busy';
-				this.waitingWithBottomBorder.set(session.id, false);
-			} else {
-				newState = 'idle';
-				this.waitingWithBottomBorder.set(session.id, false);
-			}
+			const newState = this.detectSessionState(cleanData, oldState, session.id);
 
 			// Update state if changed
 			if (newState !== oldState) {
