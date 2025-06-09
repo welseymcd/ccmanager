@@ -1,6 +1,7 @@
 import React, {useState} from 'react';
 import {Box, Text, useInput} from 'ink';
 import TextInput from 'ink-text-input';
+import {shortcutManager} from '../services/shortcutManager.js';
 
 interface NewWorktreeProps {
 	onComplete: (path: string, branch: string) => void;
@@ -14,8 +15,8 @@ const NewWorktree: React.FC<NewWorktreeProps> = ({onComplete, onCancel}) => {
 	const [path, setPath] = useState('');
 	const [branch, setBranch] = useState('');
 
-	useInput((_input, key) => {
-		if (key.escape) {
+	useInput((input, key) => {
+		if (shortcutManager.matchesShortcut('cancel', input, key)) {
 			onCancel();
 		}
 	});
@@ -78,7 +79,9 @@ const NewWorktree: React.FC<NewWorktreeProps> = ({onComplete, onCancel}) => {
 			)}
 
 			<Box marginTop={1}>
-				<Text dimColor>Press ESC to cancel</Text>
+				<Text dimColor>
+					Press {shortcutManager.getShortcutDisplay('cancel')} to cancel
+				</Text>
 			</Box>
 		</Box>
 	);

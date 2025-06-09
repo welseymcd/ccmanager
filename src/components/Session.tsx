@@ -2,6 +2,7 @@ import React, {useEffect, useState} from 'react';
 import {useStdout} from 'ink';
 import {Session as SessionType} from '../types/index.js';
 import {SessionManager} from '../services/sessionManager.js';
+import {shortcutManager} from '../services/shortcutManager.js';
 
 interface SessionProps {
 	session: SessionType;
@@ -98,8 +99,12 @@ const Session: React.FC<SessionProps> = ({
 		const handleStdinData = (data: string) => {
 			if (isExiting) return;
 
-			// Check for Ctrl+E (ASCII code 5)
-			if (data === '\x05') {
+			// Check for return to menu shortcut
+			const returnToMenuShortcut = shortcutManager.getShortcuts().returnToMenu;
+			const shortcutCode =
+				shortcutManager.getShortcutCode(returnToMenuShortcut);
+
+			if (shortcutCode && data === shortcutCode) {
 				// Disable focus reporting mode before returning to menu
 				if (stdout) {
 					stdout.write('\x1b[?1004l');

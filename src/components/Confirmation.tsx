@@ -1,5 +1,6 @@
 import React, {useState} from 'react';
 import {Box, Text, useInput} from 'ink';
+import {shortcutManager} from '../services/shortcutManager.js';
 
 interface ConfirmationProps {
 	message: string | React.ReactNode;
@@ -31,7 +32,7 @@ const Confirmation: React.FC<ConfirmationProps> = ({
 			} else {
 				onCancel();
 			}
-		} else if (key.escape) {
+		} else if (shortcutManager.matchesShortcut('cancel', input, key)) {
 			onCancel();
 		}
 	});
@@ -57,7 +58,8 @@ const Confirmation: React.FC<ConfirmationProps> = ({
 
 			<Box marginTop={1}>
 				<Text dimColor>
-					Use ← → to navigate, Enter to select, ESC to cancel
+					Use ← → to navigate, Enter to select,{' '}
+					{shortcutManager.getShortcutDisplay('cancel')} to cancel
 				</Text>
 			</Box>
 		</Box>

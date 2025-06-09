@@ -4,6 +4,7 @@ import SelectInput from 'ink-select-input';
 import {Worktree, Session} from '../types/index.js';
 import {WorktreeService} from '../services/worktreeService.js';
 import {SessionManager} from '../services/sessionManager.js';
+import {shortcutManager} from '../services/shortcutManager.js';
 
 interface MenuProps {
 	sessionManager: SessionManager;
@@ -106,6 +107,10 @@ const Menu: React.FC<MenuProps> = ({
 			value: 'delete-worktree',
 		});
 		menuItems.push({
+			label: 'Configure Shortcuts',
+			value: 'configure-shortcuts',
+		});
+		menuItems.push({
 			label: 'Exit',
 			value: 'exit',
 		});
@@ -114,7 +119,7 @@ const Menu: React.FC<MenuProps> = ({
 	}, [worktrees, sessions]);
 
 	useInput((input, key) => {
-		if (key.ctrl && input === 'q') {
+		if (shortcutManager.matchesShortcut('exitApp', input, key)) {
 			onExit();
 		}
 	});
@@ -148,6 +153,14 @@ const Menu: React.FC<MenuProps> = ({
 				isMainWorktree: false,
 				hasSession: false,
 			});
+		} else if (item.value === 'configure-shortcuts') {
+			// Handle in parent component - use special marker
+			onSelectWorktree({
+				path: 'CONFIGURE_SHORTCUTS',
+				branch: '',
+				isMainWorktree: false,
+				hasSession: false,
+			});
 		} else if (item.worktree) {
 			onSelectWorktree(item.worktree);
 		}
@@ -171,7 +184,10 @@ const Menu: React.FC<MenuProps> = ({
 
 			<Box marginTop={1} flexDirection="column">
 				<Text dimColor>Status: 🔴 Busy 🟠 Waiting 🔵 Idle</Text>
-				<Text dimColor>Controls: ↑↓ Navigate Enter Select Ctrl+Q Exit</Text>
+				<Text dimColor>
+					Controls: ↑↓ Navigate Enter Select{' '}
+					{shortcutManager.getShortcutDisplay('exitApp')} Exit
+				</Text>
 			</Box>
 		</Box>
 	);
