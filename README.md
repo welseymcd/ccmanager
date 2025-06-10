@@ -2,6 +2,28 @@
 
 CCManager is a TUI application for managing multiple Claude Code sessions across Git worktrees.
 
+## Why CCManager over Claude Squad?
+
+Both tools solve the same problem - managing multiple Claude Code sessions - but take different approaches.
+
+**If you love tmux-based workflows, stick with Claude Squad!** It's a great tool that leverages tmux's power for session management.
+
+CCManager is for developers who want:
+
+### 🚀 No tmux dependency
+CCManager is completely self-contained. No need to install or configure tmux - it works out of the box. Perfect if you don't use tmux or want to keep your tmux setup separate from Claude Code management.
+
+### 👁️ Real-time session monitoring
+CCManager shows the actual state of each Claude Code session directly in the menu:
+- **Waiting**: Claude is asking for user input
+- **Busy**: Claude is processing
+- **Idle**: Ready for new tasks
+
+Claude Squad doesn't show session states in its menu, making it hard to know which sessions need attention. While Claude Squad offers an AutoYes feature, this bypasses Claude Code's built-in security confirmations - not recommended for safe operation.
+
+### 🎯 Simple and intuitive interface
+Following Claude Code's philosophy, CCManager keeps things minimal and intuitive. The interface is so simple you'll understand it in seconds - no manual needed.
+
 ## Features
 
 - Run multiple Claude Code sessions in parallel across different Git worktrees
