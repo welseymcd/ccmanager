@@ -10,6 +10,7 @@ import {SessionManager} from '../services/sessionManager.js';
 import {WorktreeService} from '../services/worktreeService.js';
 import {Worktree, Session as SessionType} from '../types/index.js';
 import {shortcutManager} from '../services/shortcutManager.js';
+import {database} from '../services/database.js';
 
 type View =
 	| 'menu'
@@ -30,6 +31,29 @@ const App: React.FC = () => {
 	const [activeSession, setActiveSession] = useState<SessionType | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [menuKey, setMenuKey] = useState(0); // Force menu refresh
+
+	// Set up graceful shutdown
+	useEffect(() => {
+		const handleExit = () => {
+			// Save all sessions before exit
+			sessionManager.destroy();
+			// Close database connection
+			database.close();
+		};
+
+		// Handle various exit signals
+		process.on('exit', handleExit);
+		process.on('SIGINT', handleExit);
+		process.on('SIGTERM', handleExit);
+		process.on('SIGHUP', handleExit);
+
+		return () => {
+			process.removeListener('exit', handleExit);
+			process.removeListener('SIGINT', handleExit);
+			process.removeListener('SIGTERM', handleExit);
+			process.removeListener('SIGHUP', handleExit);
+		};
+	}, [sessionManager]);
 
 	useEffect(() => {
 		// Listen for session exits to return to menu automatically

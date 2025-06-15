@@ -39,6 +39,7 @@
 		"dist"
 	],
 	"dependencies": {
+		"better-sqlite3": "^11.10.0",
 		"ink": "^4.1.0",
 		"ink-select-input": "^5.0.0",
 		"ink-text-input": "^5.0.1",
@@ -49,6 +50,7 @@
 	"devDependencies": {
 		"@eslint/js": "^9.28.0",
 		"@sindresorhus/tsconfig": "^3.0.1",
+		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "^20.0.0",
 		"@types/react": "^18.0.32",
 		"@typescript-eslint/eslint-plugin": "^8.33.1",

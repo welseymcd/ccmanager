@@ -1,4 +1,4 @@
-import {spawn} from 'node-pty';
+import {spawn, IPty} from 'node-pty';
 import {
 	Session,
 	SessionManager as ISessionManager,
@@ -6,6 +6,7 @@ import {
 } from '../types/index.js';
 import {EventEmitter} from 'events';
 import {includesPromptBoxBottomBorder} from '../utils/promptDetector.js';
+import {sessionPersistence} from './sessionPersistence.js';
 
 export class SessionManager extends EventEmitter implements ISessionManager {
 	sessions: Map<string, Session>;
@@ -109,12 +110,22 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	constructor() {
 		super();
 		this.sessions = new Map();
+
+		// Restore sessions from database on startup
+		this.restoreSessions();
+
+		// Set up periodic session saving
+		this.startPeriodicSave();
 	}
 
 	createSession(worktreePath: string): Session {
 		// Check if session already exists
 		const existing = this.sessions.get(worktreePath);
 		if (existing) {
+			// If it's a restored session without a process, create the process
+			if (existing.isRestored && !existing.process) {
+				this.createProcessForRestoredSession(existing);
+			}
 			return existing;
 		}
 
@@ -209,6 +220,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			if (newState !== oldState) {
 				session.state = newState;
 				this.emit('sessionStateChanged', session);
+				// Save session state to database
+				this.saveSessionToDb(session);
 			}
 
 			// Only emit data events when session is active
@@ -221,6 +234,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			// Update state to idle before destroying
 			session.state = 'idle';
 			this.emit('sessionStateChanged', session);
+			// Delete session from database when it exits
+			sessionPersistence.deleteSession(session.worktreePath);
 			this.destroySession(session.worktreePath);
 			this.emit('sessionExit', session);
 		});
@@ -267,9 +282,97 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	}
 
 	destroy(): void {
+		// Save all sessions before destroying
+		this.saveAllSessions();
+
+		// Stop periodic save timer
+		if (this.periodicSaveTimer) {
+			clearInterval(this.periodicSaveTimer);
+		}
+
 		// Clean up all sessions
 		for (const worktreePath of this.sessions.keys()) {
 			this.destroySession(worktreePath);
 		}
+	}
+
+	private periodicSaveTimer?: NodeJS.Timeout;
+
+	private startPeriodicSave(): void {
+		// Save sessions every 5 seconds
+		this.periodicSaveTimer = setInterval(() => {
+			this.saveAllSessions();
+		}, 5000);
+	}
+
+	private saveSessionToDb(session: Session): void {
+		// Convert output history to string
+		const outputBuffer = session.outputHistory
+			.map(buf => buf.toString('utf8'))
+			.join('');
+
+		sessionPersistence.saveSession(session.worktreePath, {
+			worktreePath: session.worktreePath,
+			outputBuffer,
+			state: session.state,
+			lastUpdated: Date.now(),
+		});
+	}
+
+	private saveAllSessions(): void {
+		for (const session of this.sessions.values()) {
+			this.saveSessionToDb(session);
+		}
+	}
+
+	private async restoreSessions(): Promise<void> {
+		try {
+			const savedSessions = await sessionPersistence.loadSessions();
+
+			for (const savedSession of savedSessions) {
+				// Create a dummy session object to hold the restored data
+				// We'll create the actual PTY process when the user activates the session
+				const restoredSession: Session = {
+					id: `restored-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+					worktreePath: savedSession.worktreePath,
+					process: null as unknown as IPty, // Will be created on activation
+					state: savedSession.state,
+					output: [],
+					outputHistory: [Buffer.from(savedSession.outputBuffer, 'utf8')],
+					lastActivity: new Date(savedSession.lastUpdated),
+					isActive: false,
+					isRestored: true,
+				};
+
+				this.sessions.set(savedSession.worktreePath, restoredSession);
+				this.emit('sessionRestored', restoredSession);
+			}
+		} catch (error) {
+			console.error('Failed to restore sessions:', error);
+		}
+	}
+
+	private createProcessForRestoredSession(session: Session): void {
+		// Parse Claude command arguments from environment variable
+		const claudeArgs = process.env['CCMANAGER_CLAUDE_ARGS']
+			? process.env['CCMANAGER_CLAUDE_ARGS'].split(' ')
+			: [];
+
+		const ptyProcess = spawn('claude', claudeArgs, {
+			name: 'xterm-color',
+			cols: process.stdout.columns || 80,
+			rows: process.stdout.rows || 24,
+			cwd: session.worktreePath,
+			env: process.env,
+		});
+
+		session.process = ptyProcess;
+		session.isRestored = false;
+
+		// Set up persistent background data handler for state detection
+		this.setupBackgroundHandler(session);
+
+		// Emit event that the session is now fully active
+		this.emit('sessionCreated', session);
 	}
 }

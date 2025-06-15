@@ -1,256 +1,103 @@
-# CCManager - Claude Code Worktree Manager
+# CLAUDE.md
 
-## Overview
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## CCManager - Claude Code Worktree Manager
 
 CCManager is a TUI application for managing multiple Claude Code sessions across Git worktrees. It allows you to run Claude Code in parallel across different worktrees, switch between them seamlessly, and manage worktrees directly from the interface.
 
-## Project Structure
-
-```
-ccmanager/
-├── src/
-│   ├── cli.tsx             # Entry point with CLI argument parsing
-│   ├── components/         # UI components
-│   ├── services/           # Business logic
-│   ├── utils/              # Utility functions
-│   ├── constants/          # Shared constants
-│   └── types/              # TypeScript definitions
-├── package.json
-├── tsconfig.json
-├── eslint.config.js        # Modern flat ESLint configuration
-├── vitest.config.ts        # Vitest test configuration
-└── shortcuts.example.json  # Example shortcut configuration
-```
-
-## Key Dependencies
-
-- **ink** - React for CLI apps
-- **ink-select-input** - Menu selection component
-- **ink-text-input** - Text input fields for forms
-- **ink-spinner** - Loading indicators
-- **node-pty** - PTY for interactive sessions
-- **vitest** - Modern testing framework
-
-## Commands
-
-### Install
-
-```bash
-npm install
-```
+## Essential Commands
 
 ### Development
-
 ```bash
-npm run dev
+npm run dev          # Run in development mode with auto-reload
+npm run build        # Build TypeScript to JavaScript
+npm run lint         # Run ESLint checks
+npm run typecheck    # Run TypeScript type checking
+npm test             # Run all tests with Vitest
+npm test -- --run    # Run tests once without watch mode
+npm test -- src/services/sessionManager.test.ts  # Run specific test file
 ```
 
-### Build
-
+### Running the Application
 ```bash
-npm run build
+npm start            # Run the built application
+npx ccmanager        # Run directly via npx
+./ccmanager          # Run the built binary (after npm run build)
 ```
 
-### Run
+## Architecture Overview
 
-```bash
-npm start
-# or directly
-npx ccmanager
-```
+### Core Architecture Pattern
+The application follows a React-based CLI architecture using Ink, with a clean separation between UI components and business logic services.
 
-### Test
+**Key Flow:**
+1. `src/cli.tsx` validates TTY and renders the App component
+2. `src/components/App.tsx` manages global state and view routing
+3. Services handle business logic (sessions, worktrees, shortcuts)
+4. Components render UI based on current view and state
 
-```bash
-npm test
-```
+### Service Layer
 
-### Lint
+**SessionManager** (`src/services/sessionManager.ts`):
+- Manages Claude Code PTY sessions with sophisticated state detection
+- Events: `sessionCreated`, `sessionDestroyed`, `sessionStateChanged`, `sessionData`, `sessionExit`
+- States: `idle`, `busy`, `waiting_input` (detected via prompt patterns)
+- Maintains output buffers for session restoration
+- Background monitoring continues even for inactive sessions
 
-```bash
-npm run lint
-```
+**WorktreeService** (`src/services/worktreeService.ts`):
+- Wraps git worktree operations with error handling
+- Integrates branch management with worktree lifecycle
+- Handles main vs secondary worktree detection
 
-### Type Check
+**ShortcutManager** (`src/services/shortcutManager.ts`):
+- Platform-aware configuration paths
+- Reserved key protection (Ctrl+C, Ctrl+D, Escape)
+- Converts shortcuts to terminal control codes for raw input
 
-```bash
-npm run typecheck
-```
+### Prompt Detection System
 
-## Architecture Decisions
+The `promptDetector.ts` module handles Claude Code's output analysis:
+- Detects busy state via "ESC to interrupt" patterns
+- Identifies waiting prompts ("Do you want", "Would you like", etc.)
+- Tracks Claude's box-drawing UI elements (╭─╮, │, ╰─╯)
+- Handles bottom border detection for prompt box completion
 
-### Why TypeScript + Ink?
+### Key Design Patterns
 
-- **React Patterns**: Leverages familiar React concepts for UI development
-- **Type Safety**: TypeScript provides compile-time type checking
-- **Rich Ecosystem**: Access to npm packages for PTY, Git, and more
-- **Rapid Development**: Hot reloading and component reusability
-- **ES Modules**: Modern JavaScript module system for better tree-shaking
+1. **View-Based Routing**: Simple state machine in App component manages navigation
+2. **Event-Driven Sessions**: Decouples session monitoring from UI updates
+3. **Raw PTY Passthrough**: Direct terminal control in session view
+4. **Buffered Output**: Sessions maintain output history for restoration
+
+### Testing Approach
+
+- Uses Vitest for fast, modern testing
+- Mock dependencies (e.g., `vi.mock('./promptDetector')`)
+- Timer-based testing for async state transitions
+- Test files alongside source files (e.g., `sessionManager.test.ts`)
+
+## Important Considerations
+
+### Environment Variables
+- `CCMANAGER_CLAUDE_ARGS`: Additional arguments passed to Claude Code command
+- `CLAUDE_COMMAND`: Override the Claude command (useful for testing)
+
+### Platform Differences
+- Config location: `~/.config/ccmanager/` (Unix) vs `%APPDATA%/ccmanager/` (Windows)
+- PTY handling varies between platforms (node-pty abstracts this)
 
 ### Session Management
-
 - Each worktree maintains its own Claude Code process
-- Sessions are managed via `node-pty` for full terminal emulation
-- Process lifecycle tracked in React state with automatic cleanup
-- Session states tracked with sophisticated prompt detection
+- Sessions persist when switching views (background monitoring)
+- Output buffers limited to 10MB per session
+- Automatic cleanup on process exit
 
 ### UI Components
-
-- **App Component**: Main application container with view routing
-- **Menu Component**: Worktree list with status indicators and actions
-- **Session Component**: Full PTY rendering with ANSI color support
-- **Worktree Management**: Create, delete, and merge worktrees via dedicated forms
-- **Shortcut Configuration**: Customizable keyboard shortcuts with visual editor
-
-### State Detection
-
-Claude Code states are detected by advanced output analysis in `promptDetector.ts`:
-
-- **Waiting for input**: Detects various prompt patterns including "Do you want" questions
-- **Busy**: Detects "ESC to interrupt" and active processing
-- **Task complete**: Identifies when Claude is ready for new input
-- **Bottom border tracking**: Handles prompt box UI elements
-
-### Keyboard Shortcuts
-
-- Fully configurable shortcuts stored in `~/.config/ccmanager/shortcuts.json`
-- Platform-aware configuration paths (Windows uses `%APPDATA%`)
-- Default shortcuts for common actions (back, quit, refresh, etc.)
-- Visual configuration UI accessible from main menu
-
-## Development Guidelines
-
-### Component Structure
-
-```tsx
-// Example component pattern
-const MyComponent: React.FC<Props> = ({prop1, prop2}) => {
-	const [state, setState] = useState<State>(initialState);
-
-	useEffect(() => {
-		// Side effects
-	}, [dependencies]);
-
-	return (
-		<Box flexDirection="column">
-			<Text>Content</Text>
-		</Box>
-	);
-};
-```
-
-### Testing Sessions
-
-```typescript
-// Mock Claude Code for testing
-process.env.CLAUDE_COMMAND = './mock-claude';
-
-// Create mock-claude script
-const mockScript = `#!/usr/bin/env node
-console.log('Claude Code Mock');
-const readline = require('readline');
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
-function prompt() {
-  rl.question('> ', (answer) => {
-    console.log(\`Processing: \${answer}\`);
-    setTimeout(prompt, 1000);
-  });
-}
-prompt();
-`;
-```
-
-### Keyboard Handling
-
-```tsx
-useInput((input, key) => {
-	const shortcuts = shortcutManager.getShortcuts();
-
-	if (shortcutManager.matchesShortcut(shortcuts.back, input, key)) {
-		// Return to menu
-	}
-
-	if (shortcutManager.matchesShortcut(shortcuts.quit, input, key)) {
-		// Exit application
-	}
-});
-```
-
-### Worktree Management
-
-```typescript
-// List worktrees
-const worktrees = await worktreeService.listWorktrees();
-
-// Create new worktree
-await worktreeService.createWorktree(branchName, path);
-
-// Delete worktree
-await worktreeService.deleteWorktree(worktreePath, { force: true });
-
-// Merge worktree branch
-await worktreeService.mergeWorktree(worktreePath, targetBranch);
-```
-
-## Common Issues
-
-### PTY Compatibility
-
-- Use `node-pty` prebuilt binaries for cross-platform support
-- Handle Windows ConPTY vs Unix PTY differences
-- Test on WSL, macOS, and Linux
-
-### React Reconciliation
-
-- Use `key` prop for session components
-- Memoize expensive renders with `React.memo`
-- Avoid recreating PTY instances unnecessarily
-
-### Process Management
-
-- Clean up PTY instances on unmount
-- Handle orphaned processes gracefully
-- Implement proper signal handling
-
-### Prompt Detection
-
-- Handle various Claude Code output formats
-- Track prompt box borders and UI elements
-- Maintain state history for accurate detection
-
-### Configuration Management
-
-- Create config directory if it doesn't exist
-- Handle platform-specific paths correctly
-- Provide sensible defaults for shortcuts
-
-## Features
-
-### Core Features
-
-- **Multi-Session Management**: Run Claude Code in multiple worktrees simultaneously
-- **Worktree Operations**: Create, delete, and merge worktrees from the UI
-- **Session State Tracking**: Visual indicators for session states (idle, busy, waiting)
-- **Customizable Shortcuts**: Configure keyboard shortcuts via UI or JSON file
-- **Cross-Platform**: Works on Windows, macOS, and Linux
-
-### User Interface
-
-- **Main Menu**: Lists all worktrees with status indicators
-- **Session View**: Full terminal emulation with Claude Code
-- **Forms**: Text input for creating worktrees and configuring settings
-- **Confirmation Dialogs**: Safety prompts for destructive actions
-
-## Future Enhancements
-
-- Session recording and playback
-- Split pane view for multiple sessions
-- Integration with Claude Code's `-r` flag
-- Theme customization
-- Plugin system for extensions
-- Session history and search
-- Worktree templates
+All components use Ink's React-like API:
+- `<Box>` for layout (flexDirection, padding, etc.)
+- `<Text>` for styled text output
+- `<SelectInput>` for menu navigation
+- `<TextInput>` for form inputs
+- Custom hooks like `useInput` for keyboard handling

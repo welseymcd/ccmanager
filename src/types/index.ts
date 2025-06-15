@@ -18,6 +18,7 @@ export interface Session {
 	outputHistory: Buffer[]; // Full output history as buffers
 	lastActivity: Date;
 	isActive: boolean;
+	isRestored?: boolean; // True if this session was restored from database
 }
 
 export interface SessionManager {
