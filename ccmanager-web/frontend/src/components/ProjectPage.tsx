@@ -55,7 +55,7 @@ const ProjectPage: React.FC = () => {
   }, [isResizing]);
 
   return (
-    <div className="flex h-full bg-gray-50 dark:bg-gray-900">
+    <div className="flex h-full min-h-0 bg-gray-50 dark:bg-gray-900">
       {/* Sidebar */}
       {!sidebarCollapsed && (
         <div
@@ -75,7 +75,7 @@ const ProjectPage: React.FC = () => {
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         <Tabs.Root
           value={activeProjectSessionType}
           onValueChange={(value) => setActiveSessionType(value as 'main' | 'devserver')}
@@ -115,7 +115,7 @@ const ProjectPage: React.FC = () => {
           </Tabs.List>
 
           {/* Tab Panels */}
-          <Tabs.Content value="main" className="flex-1 overflow-hidden">
+          <Tabs.Content value="main" className="flex-1 min-h-0">
             <ProjectTerminalView
               projectId={currentProject.id}
               sessionType="main"
@@ -123,7 +123,7 @@ const ProjectPage: React.FC = () => {
             />
           </Tabs.Content>
 
-          <Tabs.Content value="devserver" className="flex-1 overflow-hidden">
+          <Tabs.Content value="devserver" className="flex-1 min-h-0">
             <DevServerPanel
               projectId={currentProject.id}
               command={currentProject.devServerCommand}

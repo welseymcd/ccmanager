@@ -98,6 +98,18 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
       // Initial fit
       setTimeout(() => {
         fitAddon.fit();
+        // Send initial size to backend
+        if (sessionId && client) {
+          const dimensions = fitAddon.proposeDimensions();
+          if (dimensions) {
+            client.sendRaw({
+              type: 'resize_terminal',
+              sessionId,
+              cols: dimensions.cols,
+              rows: dimensions.rows
+            } as any);
+          }
+        }
       }, 0);
 
       // Handle terminal input
@@ -230,7 +242,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
     };
 
     return (
-      <div className="h-full bg-black">
+      <div className="h-full w-full bg-black">
         {status !== 'connected' && (
           <div className="flex items-center justify-center h-full text-white">
             <div className="text-center">
@@ -260,7 +272,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
         <div 
           ref={terminalContainerRef} 
           className={`h-full w-full ${status !== 'connected' ? 'hidden' : ''}`}
-          style={{ padding: '8px' }}
+          style={{ padding: '4px' }}
         />
       </div>
     );

@@ -99,6 +99,8 @@ export function setupWebSocketHandlers(
           userId: (socket.data as SocketData).userId!,
           workingDir: message.workingDir,
           command: message.command,
+          cols: message.cols,
+          rows: message.rows,
           onData: (data: string) => {
             const output: ServerToClientMessage = {
               type: 'terminal_output',

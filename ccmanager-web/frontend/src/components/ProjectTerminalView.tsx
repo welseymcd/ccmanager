@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Loader2, AlertCircle, Terminal as TerminalIcon, Square, X, MoreVertical } from 'lucide-react';
+import { Loader2, AlertCircle, Square, X, MoreVertical } from 'lucide-react';
 import { TerminalView } from './TerminalView';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { getWebSocketClient } from '../services/websocket';
@@ -259,10 +259,27 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
         throw new Error('WebSocket not connected. Please refresh the page.');
       }
 
+      // Get terminal dimensions from the terminal container if available
+      let cols = 80;
+      let rows = 24;
+      
+      if (terminalRef.current && typeof terminalRef.current.fit === 'function') {
+        // Try to get actual terminal dimensions
+        const container = document.querySelector('.xterm-screen');
+        if (container) {
+          const cellWidth = 9; // Approximate character width in pixels
+          const cellHeight = 17; // Approximate character height in pixels
+          cols = Math.floor(container.clientWidth / cellWidth) || 80;
+          rows = Math.floor(container.clientHeight / cellHeight) || 24;
+        }
+      }
+      
       const sessionConfig = {
         type: 'create_session',
         workingDir,
-        command: sessionType === 'main' ? 'claude' : 'npm run dev'
+        command: sessionType === 'main' ? 'claude' : 'npm run dev',
+        cols,
+        rows
       };
       
       addLog(`Sending create_session message: ${JSON.stringify(sessionConfig)}`);
@@ -504,47 +521,49 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-900 overflow-hidden">
-      {/* Status Bar */}
-      <div className="px-2 sm:px-4 py-2 bg-gray-800 border-b border-gray-700 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <TerminalIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-          <span className="text-sm text-gray-300 font-medium">
-            {sessionType === 'main' ? 'Claude' : 'Dev Server'}
-          </span>
-          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-            status === 'connected' ? 'bg-green-500' :
-            status === 'connecting' ? 'bg-yellow-500 animate-pulse' :
-            'bg-red-500'
-          }`} />
-          {/* Working Directory - only on larger screens */}
-          <span className="text-xs text-gray-500 font-mono hidden md:block truncate" title={workingDir}>
-            {workingDir}
-          </span>
-        </div>
-        
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Primary Actions */}
-          {status === 'connected' && (
-            <button
-              onClick={sendInterrupt}
-              className="flex items-center justify-center px-3 py-1.5 text-sm font-medium text-red-400 bg-red-950 border border-red-800 rounded hover:bg-red-900 hover:text-red-300 transition-colors"
-              title="Send Ctrl+C interrupt signal"
-            >
-              <Square className="w-3.5 h-3.5 mr-1.5" />
-              <span className="hidden sm:inline">Stop</span>
-            </button>
-          )}
-          
-          {/* Dropdown Menu for Secondary Actions */}
-          <div className="relative" ref={actionsMenuRef}>
-            <button
-              onClick={() => setShowActionsMenu(!showActionsMenu)}
-              className="flex items-center justify-center px-3 py-1.5 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded hover:bg-gray-600 hover:border-gray-500 transition-colors"
-              aria-label="More actions"
-            >
-              <MoreVertical className="w-4 h-4" />
-            </button>
+    <div className="h-full flex flex-col min-h-0 bg-white dark:bg-gray-900">
+      {/* Header - matching Dev Server panel style */}
+      <div className="px-2 sm:px-4 py-2 sm:py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h3 className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
+              Claude
+            </h3>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${
+                status === 'connected' ? 'bg-green-500' :
+                status === 'connecting' ? 'bg-yellow-500 animate-pulse' :
+                'bg-gray-400'
+              }`} />
+              <span className="text-xs text-gray-600 dark:text-gray-400 capitalize hidden sm:inline">
+                {status === 'connected' ? 'Connected' : 
+                 status === 'connecting' ? 'Connecting' : 
+                 'Disconnected'}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Primary Actions */}
+            {status === 'connected' && (
+              <button
+                onClick={sendInterrupt}
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-red-600 text-white text-xs sm:text-sm rounded-md hover:bg-red-700 transition-colors"
+                title="Send Ctrl+C interrupt signal"
+              >
+                <Square className="w-4 h-4" />
+                Stop
+              </button>
+            )}
+            
+            {/* Dropdown Menu for Secondary Actions */}
+            <div className="relative" ref={actionsMenuRef}>
+              <button
+                onClick={() => setShowActionsMenu(!showActionsMenu)}
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-gray-600 text-white text-xs sm:text-sm rounded-md hover:bg-gray-700 transition-colors"
+                aria-label="More actions"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
             
             {/* Dropdown Menu */}
             {showActionsMenu && (
@@ -597,13 +616,14 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
                 </div>
               </div>
             )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Debug Log Panel */}
       {showDebugLog && (
-        <div className="bg-gray-800 border-b border-gray-700 p-4 max-h-48 overflow-y-auto overflow-x-hidden">
+        <div className="bg-gray-800 border-b border-gray-700 p-2 sm:p-4 max-h-32 sm:max-h-48 overflow-y-auto">
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-sm font-semibold text-gray-300">Debug Log</h3>
             <button
@@ -613,12 +633,12 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
               Clear
             </button>
           </div>
-          <div className="text-xs font-mono text-gray-400 space-y-1 overflow-x-hidden">
+          <div className="text-xs font-mono text-gray-400 space-y-1">
             {debugLogs.length === 0 ? (
               <div>No logs yet...</div>
             ) : (
               debugLogs.map((log, index) => (
-                <div key={index} className="break-words">
+                <div key={index} className="break-words whitespace-pre-wrap">
                   {log}
                 </div>
               ))
@@ -631,7 +651,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
       )}
 
       {/* Terminal */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 bg-gray-900">
         <TerminalView
           ref={terminalRef}
           sessionId={sessionId}

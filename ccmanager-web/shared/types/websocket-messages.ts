@@ -16,6 +16,8 @@ export interface CreateSessionMessage extends ClientMessage {
   type: 'create_session';
   workingDir?: string;
   command?: string;
+  cols?: number;
+  rows?: number;
 }
 
 export interface CloseSessionMessage extends ClientMessage {

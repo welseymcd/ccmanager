@@ -11,6 +11,8 @@ export interface SessionConfig {
   userId: string;
   workingDir?: string;
   command?: string;
+  cols?: number;
+  rows?: number;
   onData: (data: string) => void;
   onExit: (exitCode: number) => void;
 }
@@ -53,7 +55,7 @@ export class SessionManager extends EventEmitter {
   }
 
   async createSession(config: SessionConfig): Promise<string> {
-    const { userId, workingDir = process.cwd(), command = process.env.CLAUDE_COMMAND || 'claude', onData, onExit } = config;
+    const { userId, workingDir = process.cwd(), command = process.env.CLAUDE_COMMAND || 'claude', cols = 80, rows = 24, onData, onExit } = config;
 
     // Check user session limit
     const userSessionCount = this.userSessionCounts.get(userId) || 0;
@@ -112,8 +114,8 @@ export class SessionManager extends EventEmitter {
       
       const ptyProcess = pty.spawn(actualCommand, args, {
         name: 'xterm-256color',
-        cols: 80,
-        rows: 24,
+        cols: cols,
+        rows: rows,
         cwd: workingDir,
         env: {
           ...process.env,

@@ -130,7 +130,7 @@ function AppContent() {
 
   // Show project page when authenticated with project selected
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen overflow-hidden">
       <div className="flex items-center justify-between bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2">
         <div className="flex items-center gap-4">
           <button
@@ -152,7 +152,7 @@ function AppContent() {
           Logout
         </button>
       </div>
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0">
         <ProjectPage />
       </div>
     </div>
