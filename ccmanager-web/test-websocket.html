@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>CCManager WebSocket Test</h1>
+    <div id="status">Connecting...</div>
+    <button onclick="createSession()">Create Test Session</button>
+    <pre id="log"></pre>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const log = document.getElementById('log');
+        const status = document.getElementById('status');
+        
+        function addLog(msg) {
+            log.textContent += msg + '\n';
+            console.log(msg);
+        }
+
+        // Get auth token first
+        fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: 'admin', password: 'AdminPass123!'})
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.token) {
+                addLog('✓ Authenticated successfully');
+                connectWebSocket(data.token);
+            } else {
+                addLog('✗ Authentication failed: ' + JSON.stringify(data));
+            }
+        })
+        .catch(err => {
+            addLog('✗ Login error: ' + err.message);
+        });
+
+        function connectWebSocket(token) {
+            const socket = io('/', {
+                auth: { token }
+            });
+
+            socket.on('connect', () => {
+                status.textContent = '✓ Connected';
+                addLog('✓ WebSocket connected: ' + socket.id);
+            });
+
+            socket.on('disconnect', () => {
+                status.textContent = '✗ Disconnected';
+                addLog('✗ WebSocket disconnected');
+            });
+
+            socket.on('error', (error) => {
+                addLog('✗ WebSocket error: ' + error);
+            });
+
+            socket.on('session_created', (data) => {
+                addLog('✓ Session created: ' + JSON.stringify(data));
+            });
+
+            socket.on('session_error', (data) => {
+                addLog('✗ Session error: ' + JSON.stringify(data));
+            });
+
+            socket.on('terminal_output', (data) => {
+                addLog('Terminal output: ' + data.data);
+            });
+
+            window.socket = socket;
+        }
+
+        function createSession() {
+            if (window.socket && window.socket.connected) {
+                addLog('→ Sending create_session request...');
+                window.socket.emit('create_session', {
+                    workingDir: '/home/ross'
+                });
+            } else {
+                addLog('✗ Not connected to WebSocket');
+            }
+        }
+    </script>
+</body>
+</html>

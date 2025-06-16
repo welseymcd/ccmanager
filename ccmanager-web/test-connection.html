@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CCManager Connection Test</title>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <h1>CCManager WebSocket Test</h1>
+    <div id="status">Not connected</div>
+    <button onclick="testLogin()">Test Login</button>
+    <button onclick="testCreateSession()" disabled id="createBtn">Create Session</button>
+    <pre id="log"></pre>
+
+    <script>
+        const log = (msg) => {
+            document.getElementById('log').textContent += msg + '\n';
+            console.log(msg);
+        };
+
+        let authToken = null;
+        let socket = null;
+
+        async function testLogin() {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: 'admin', password: 'admin123' })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    authToken = data.token;
+                    log('Login successful, token: ' + authToken.substring(0, 20) + '...');
+                    connectWebSocket();
+                } else {
+                    log('Login failed: ' + data.error);
+                }
+            } catch (error) {
+                log('Login error: ' + error.message);
+            }
+        }
+
+        function connectWebSocket() {
+            socket = io('/', {
+                auth: { token: authToken }
+            });
+
+            socket.on('connect', () => {
+                log('WebSocket connected');
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('createBtn').disabled = false;
+            });
+
+            socket.on('connect_error', (error) => {
+                log('WebSocket error: ' + error.message);
+            });
+
+            socket.on('session_created', (data) => {
+                log('Session created: ' + JSON.stringify(data));
+            });
+
+            socket.on('session_error', (data) => {
+                log('Session error: ' + JSON.stringify(data));
+            });
+
+            socket.on('terminal_output', (data) => {
+                log('Terminal output: ' + data.data);
+            });
+        }
+
+        function testCreateSession() {
+            if (!socket) {
+                log('Not connected');
+                return;
+            }
+
+            const message = {
+                type: 'create_session',
+                workingDir: '~',
+                id: 'test_' + Date.now()
+            };
+
+            log('Sending: ' + JSON.stringify(message));
+            socket.emit('create_session', message);
+        }
+    </script>
+</body>
+</html>
