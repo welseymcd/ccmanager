@@ -44,12 +44,13 @@ export default function FileExplorer({ projectId, basePath = '/' }: FileExplorer
   const [currentPath, setCurrentPath] = useState(basePath)
   const queryClient = useQueryClient()
 
-  // Set the base path to the project's working directory when project is loaded
+  // Keep the current path at root when project is loaded
+  // The backend will handle the actual project path
   useEffect(() => {
-    if (project && currentPath === '/') {
-      setCurrentPath(project.workingDir || project.localPath || '/')
+    if (project && basePath === '/') {
+      setCurrentPath('/')
     }
-  }, [project])
+  }, [project, basePath])
 
   // Fetch directory contents
   const { data: items, isLoading, error, refetch } = useQuery<FileSystemItem[]>({
@@ -169,7 +170,8 @@ export default function FileExplorer({ projectId, basePath = '/' }: FileExplorer
       <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link
-            to={project ? `/projects/${project.id}` : "/"}
+            to={project ? `/projects/$projectId` : "/"}
+            params={project ? { projectId: project.id } : undefined}
             className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 rounded-md transition-colors"
           >
             <ChevronRight className="w-4 h-4 rotate-180" />
@@ -270,7 +272,7 @@ export default function FileExplorer({ projectId, basePath = '/' }: FileExplorer
         </div>
 
         {/* File list */}
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 custom-scrollbar">
           {isLoading && (
             <div className="flex items-center justify-center py-8">
               <RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
@@ -303,7 +305,7 @@ export default function FileExplorer({ projectId, basePath = '/' }: FileExplorer
       </div>
 
       {/* Main content area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {selectedPath ? (
           <FileViewer path={selectedPath} projectId={projectId} />
         ) : (
@@ -445,8 +447,8 @@ function FileViewer({ path, projectId }: FileViewerProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col">
-      <div className="border-b border-gray-700 p-4 flex items-center justify-between">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="border-b border-gray-700 p-4 flex items-center justify-between flex-shrink-0">
         <h3 className="text-sm font-medium">{path.split('/').pop()}</h3>
         <div className="flex items-center gap-2">
           <button className="p-2 hover:bg-gray-800 rounded-md" title="Edit">
@@ -457,8 +459,8 @@ function FileViewer({ path, projectId }: FileViewerProps) {
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto p-4">
-        <pre className="text-sm font-mono">{content?.content}</pre>
+      <div className="flex-1 overflow-auto p-4 custom-scrollbar min-h-0">
+        <pre className="text-sm font-mono whitespace-pre-wrap break-words">{content?.content}</pre>
       </div>
     </div>
   )

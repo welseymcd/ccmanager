@@ -32,11 +32,21 @@ export function createExplorerRoutes(authService: AuthService, db: DatabaseManag
       const { path: requestPath = '/', projectId } = req.query
       const userId = req.user!.userId
       const basePath = await getBasePath(projectId as string, userId)
-    const fullPath = path.join(basePath, requestPath as string)
+      
+      // Treat all paths as relative to the project base path
+      // Even if they start with '/', they're relative to the project root
+      let normalizedPath = requestPath as string
+      if (normalizedPath.startsWith('/')) {
+        normalizedPath = normalizedPath.substring(1)
+      }
+      
+      const fullPath = path.join(basePath, normalizedPath)
 
     // Security check - ensure path doesn't escape base directory
     const resolvedPath = path.resolve(fullPath)
     const resolvedBase = path.resolve(basePath)
+    
+    // Ensure the resolved path is within the base directory
     if (!resolvedPath.startsWith(resolvedBase)) {
       return res.status(403).json({ error: 'Access denied' })
     }
@@ -95,7 +105,14 @@ export function createExplorerRoutes(authService: AuthService, db: DatabaseManag
 
       const userId = req.user!.userId
       const basePath = await getBasePath(projectId as string, userId)
-    const fullPath = path.join(basePath, requestPath as string)
+      
+      // Treat all paths as relative to the project base path
+      let normalizedPath = requestPath as string
+      if (normalizedPath.startsWith('/')) {
+        normalizedPath = normalizedPath.substring(1)
+      }
+      
+      const fullPath = path.join(basePath, normalizedPath)
 
     // Security check
     const resolvedPath = path.resolve(fullPath)
@@ -135,8 +152,15 @@ export function createExplorerRoutes(authService: AuthService, db: DatabaseManag
 
       const userId = req.user!.userId
       const basePath = await getBasePath(projectId as string, userId)
-    const parentPath = path.join(basePath, requestPath)
-    const fullPath = path.join(parentPath, name)
+      
+      // Treat all paths as relative to the project base path
+      let normalizedPath = requestPath
+      if (normalizedPath.startsWith('/')) {
+        normalizedPath = normalizedPath.substring(1)
+      }
+      
+      const parentPath = path.join(basePath, normalizedPath)
+      const fullPath = path.join(parentPath, name)
 
     // Security check
     const resolvedPath = path.resolve(fullPath)
@@ -183,7 +207,14 @@ export function createExplorerRoutes(authService: AuthService, db: DatabaseManag
 
       const userId = req.user!.userId
       const basePath = await getBasePath(projectId as string, userId)
-    const fullPath = path.join(basePath, requestPath)
+      
+      // Treat all paths as relative to the project base path
+      let normalizedPath = requestPath
+      if (normalizedPath.startsWith('/')) {
+        normalizedPath = normalizedPath.substring(1)
+      }
+      
+      const fullPath = path.join(basePath, normalizedPath)
 
     // Security check
     const resolvedPath = path.resolve(fullPath)
@@ -218,7 +249,14 @@ export function createExplorerRoutes(authService: AuthService, db: DatabaseManag
 
       const userId = req.user!.userId
       const basePath = await getBasePath(projectId as string, userId)
-      const fullPath = path.join(basePath, requestPath)
+      
+      // Treat all paths as relative to the project base path
+      let normalizedPath = requestPath
+      if (normalizedPath.startsWith('/')) {
+        normalizedPath = normalizedPath.substring(1)
+      }
+      
+      const fullPath = path.join(basePath, normalizedPath)
 
       // Security check
       const resolvedPath = path.resolve(fullPath)
