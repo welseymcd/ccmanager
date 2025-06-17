@@ -302,23 +302,47 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
       
       addLog(`Sending create_session message: ${JSON.stringify(sessionConfig)}`);
       
-      const wsResponse = await sendMessage(sessionConfig as any);
-      
-      addLog(`Received WebSocket response: ${JSON.stringify(wsResponse)}`);
-      
-      if (wsResponse.type === 'session_created') {
-        setSessionId(wsResponse.sessionId);
-        setStatus('connected'); // Set status immediately
-        setIsLoading(false);
-        addLog(`Session created successfully! ID: ${wsResponse.sessionId}`);
+      try {
+        const wsResponse = await sendMessage(sessionConfig as any);
         
-        // Store session ID for reconnection
-        localStorage.setItem(sessionStorageKey, wsResponse.sessionId);
-      } else if (wsResponse.type === 'error' || wsResponse.type === 'session_error') {
-        throw new Error(wsResponse.error || 'Failed to create session');
-      } else {
-        addLog(`Unexpected response type: ${wsResponse.type}`);
-        throw new Error('Unexpected response from server');
+        addLog(`Received WebSocket response: ${JSON.stringify(wsResponse)}`);
+        
+        if (wsResponse.type === 'session_created') {
+          setSessionId(wsResponse.sessionId);
+          setStatus('connected'); // Set status immediately
+          setIsLoading(false);
+          addLog(`Session created successfully! ID: ${wsResponse.sessionId}`);
+          
+          // Store session ID for reconnection
+          localStorage.setItem(sessionStorageKey, wsResponse.sessionId);
+        } else if (wsResponse.type === 'error' || wsResponse.type === 'session_error') {
+          throw new Error(wsResponse.error || 'Failed to create session');
+        } else {
+          addLog(`Unexpected response type: ${wsResponse.type}`);
+          throw new Error('Unexpected response from server');
+        }
+      } catch (timeoutError: any) {
+        if (timeoutError.message.includes('timeout')) {
+          addLog(`Session creation timed out. The server might be processing the request.`);
+          // Try to list sessions again to see if it was created
+          try {
+            const listResponse = await sendMessage({ type: 'list_sessions' } as any);
+            if (listResponse.type === 'sessions_list' && listResponse.sessions.length > 0) {
+              const newSession = listResponse.sessions.find((s: any) => 
+                s.workingDir === workingDir && 
+                new Date(s.createdAt).getTime() > Date.now() - 35000 // Created in last 35 seconds
+              );
+              if (newSession) {
+                addLog(`Found recently created session despite timeout: ${newSession.id}`);
+                await connectToSession(newSession.id);
+                return;
+              }
+            }
+          } catch (e) {
+            addLog(`Failed to check for sessions after timeout: ${e}`);
+          }
+        }
+        throw timeoutError;
       }
     } catch (err: any) {
       addLog(`ERROR in createOrReconnectSession: ${err.message || err}`);

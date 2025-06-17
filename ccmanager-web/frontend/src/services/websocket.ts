@@ -93,12 +93,14 @@ export class WebSocketClient extends EventEmitter {
       'session_created',
       'session_closed',
       'session_error',
+      'session_recreated',
       'connection_status',
       'authenticated',
       'authentication_error',
       'sessions_list',
       'session_buffer',
-      'session_info'
+      'session_info',
+      'error'
     ];
 
     messageTypes.forEach(type => {
@@ -158,10 +160,11 @@ export class WebSocketClient extends EventEmitter {
         this.socket.emit(messageWithId.type, messageWithId);
 
         // Timeout after 30 seconds
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           if (this.requestCallbacks.has(requestId)) {
+            console.error(`[WebSocket] Request ${requestId} timed out for message type: ${messageWithId.type}`);
             this.requestCallbacks.delete(requestId);
-            reject(new Error('Request timeout'));
+            reject(new Error(`Request timeout for ${messageWithId.type}`));
           }
         }, 30000);
       } catch (error) {
@@ -243,13 +246,17 @@ export class WebSocketClient extends EventEmitter {
   }
 }
 
-// Singleton instance
-let instance: WebSocketClient | null = null;
+// Singleton instance - store on window to survive HMR
+declare global {
+  interface Window {
+    __webSocketClient?: WebSocketClient;
+  }
+}
 
 export function getWebSocketClient(options?: WebSocketClientOptions): WebSocketClient {
-  if (!instance) {
+  if (!window.__webSocketClient) {
     console.log('[WebSocket] Creating new WebSocket client instance');
-    instance = new WebSocketClient(options);
+    window.__webSocketClient = new WebSocketClient(options);
   }
-  return instance;
+  return window.__webSocketClient;
 }
