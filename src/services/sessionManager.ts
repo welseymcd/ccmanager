@@ -124,6 +124,10 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		if (existing) {
 			// If it's a restored session without a process, create the process
 			if (existing.isRestored && !existing.process) {
+				console.log(
+					'[SessionManager] Creating process for restored session:',
+					worktreePath,
+				);
 				this.createProcessForRestoredSession(existing);
 			}
 			return existing;
@@ -252,6 +256,12 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 
 			// If becoming active, emit a restore event with the output history
 			if (active && session.outputHistory.length > 0) {
+				console.log(
+					'[SessionManager] Emitting sessionRestore for:',
+					session.worktreePath,
+					'output size:',
+					session.outputHistory.length,
+				);
 				this.emit('sessionRestore', session);
 			}
 		}
@@ -328,10 +338,32 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	private async restoreSessions(): Promise<void> {
 		try {
 			const savedSessions = await sessionPersistence.loadSessions();
+			console.log(
+				'[SessionManager] Loaded saved sessions:',
+				savedSessions.length,
+			);
 
 			for (const savedSession of savedSessions) {
+				console.log(
+					'[SessionManager] Restoring session:',
+					savedSession.worktreePath,
+					'buffer size:',
+					savedSession.outputBuffer.length,
+				);
 				// Create a dummy session object to hold the restored data
 				// We'll create the actual PTY process when the user activates the session
+				// Only restore if there's actual output to restore
+				if (
+					!savedSession.outputBuffer ||
+					savedSession.outputBuffer.length === 0
+				) {
+					console.log(
+						'[SessionManager] Skipping session with empty buffer:',
+						savedSession.worktreePath,
+					);
+					continue;
+				}
+
 				const restoredSession: Session = {
 					id: `restored-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
 					worktreePath: savedSession.worktreePath,
@@ -367,7 +399,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		});
 
 		session.process = ptyProcess;
-		session.isRestored = false;
+		// Keep isRestored as true so the Session component knows to restore output
 
 		// Set up persistent background data handler for state detection
 		this.setupBackgroundHandler(session);

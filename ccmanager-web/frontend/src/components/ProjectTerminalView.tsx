@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Loader2, AlertCircle, Square, X, MoreVertical } from 'lucide-react';
+import { Loader2, AlertCircle, Square, X, MoreVertical, Plus } from 'lucide-react';
 import { TerminalView } from './TerminalView';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { getWebSocketClient } from '../services/websocket';
@@ -8,12 +8,14 @@ interface ProjectTerminalViewProps {
   projectId: string;
   sessionType: 'main' | 'devserver';
   workingDir: string;
+  command?: string;
 }
 
 const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({ 
   projectId, 
   sessionType, 
-  workingDir 
+  workingDir,
+  command 
 }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +29,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const terminalRef = useRef<any>(null);
   const isCreatingSession = useRef(false);
+  const hasInitialized = useRef(false);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const { sendMessage, client, isConnected, sendTerminalData } = useWebSocket();
   
@@ -44,6 +47,11 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
   const tabId = `${projectId}-${sessionType}`;
 
   useEffect(() => {
+    // Prevent duplicate initialization
+    if (hasInitialized.current) {
+      return;
+    }
+    
     addLog(`Component mounted - WebSocket connected: ${isConnected}`);
     addLog(`Project ID: ${projectId}, Session Type: ${sessionType}`);
     addLog(`Working Directory: ${workingDir}`);
@@ -62,6 +70,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
     
     if (isConnected) {
       addLog('WebSocket is connected, creating session...');
+      hasInitialized.current = true;
       createOrReconnectSession();
     } else {
       addLog('WebSocket not connected yet, waiting...');
@@ -84,9 +93,18 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
         });
       } else {
         addLog('WebSocket already connected!');
+        hasInitialized.current = true;
+        createOrReconnectSession();
       }
     }
   }, [projectId, sessionType, isConnected]);
+  
+  // Reset initialization flag on unmount
+  useEffect(() => {
+    return () => {
+      hasInitialized.current = false;
+    };
+  }, []);
 
   // Listen for WebSocket connection state changes
   useEffect(() => {
@@ -198,7 +216,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
             const isCorrectDir = s.workingDir === workingDir;
             const isCorrectType = sessionType === 'main' 
               ? s.command === 'claude' || s.command.includes('--dangerously-skip-permissions')
-              : s.command.includes('npm run dev');
+              : s.command === (command || 'npm run dev') || s.command.includes(command || 'npm run dev');
             return isCorrectDir && isCorrectType;
           });
           
@@ -277,7 +295,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
       const sessionConfig = {
         type: 'create_session',
         workingDir,
-        command: sessionType === 'main' ? 'claude' : 'npm run dev',
+        command: sessionType === 'main' ? 'claude' : (command || 'npm run dev'),
         cols,
         rows
       };
@@ -331,28 +349,41 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
 
   const connectToSession = async (sessionIdToConnect: string) => {
     addLog(`Connecting to session: ${sessionIdToConnect}`);
-    setSessionId(sessionIdToConnect);
-    setStatus('connected');
-    setIsLoading(false);
     setShowSessionPicker(false);
+    setStatus('connecting'); // Keep as connecting while fetching buffer
     
-    // Store in localStorage for faster reconnection
-    localStorage.setItem(sessionStorageKey, sessionIdToConnect);
-    
-    // Request session buffer to restore terminal state
+    // Request session buffer first to restore terminal state
     try {
+      addLog(`Requesting session buffer for: ${sessionIdToConnect}`);
       const bufferResponse = await sendMessage({
         type: 'get_session_buffer',
         sessionId: sessionIdToConnect
       } as any);
       
-      if (bufferResponse.type === 'session_buffer' && bufferResponse.buffer) {
-        addLog(`Restored session buffer (${bufferResponse.buffer.length} bytes)`);
-        setSessionBuffer(bufferResponse.buffer);
+      addLog(`Buffer response type: ${bufferResponse.type}`);
+      
+      if (bufferResponse.type === 'session_buffer') {
+        if (bufferResponse.buffer) {
+          addLog(`Restored session buffer (${bufferResponse.buffer.length} bytes)`);
+          setSessionBuffer(bufferResponse.buffer);
+        } else {
+          addLog(`Buffer response had no buffer data`);
+          setSessionBuffer('');
+        }
+      } else {
+        addLog(`Unexpected response type: ${bufferResponse.type}`);
       }
     } catch (err) {
       addLog(`Could not restore session buffer: ${err}`);
     }
+    
+    // Now set the session as connected
+    setSessionId(sessionIdToConnect);
+    setStatus('connected');
+    setIsLoading(false);
+    
+    // Store in localStorage for faster reconnection
+    localStorage.setItem(sessionStorageKey, sessionIdToConnect);
   };
 
   const closeSession = async () => {
@@ -402,15 +433,76 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
     }
   };
 
+  const createNewSession = async () => {
+    // Close any existing session first
+    if (sessionId) {
+      await closeSession();
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      if (!client) {
+        throw new Error('WebSocket not connected. Please refresh the page.');
+      }
+
+      // Get terminal dimensions
+      let cols = 80;
+      let rows = 24;
+      
+      if (terminalRef.current && typeof terminalRef.current.fit === 'function') {
+        const container = document.querySelector('.xterm-screen');
+        if (container) {
+          const cellWidth = 9;
+          const cellHeight = 17;
+          cols = Math.floor(container.clientWidth / cellWidth) || 80;
+          rows = Math.floor(container.clientHeight / cellHeight) || 24;
+        }
+      }
+      
+      const sessionConfig = {
+        type: 'create_session',
+        workingDir,
+        command: sessionType === 'main' ? 'claude' : (command || 'npm run dev'),
+        cols,
+        rows
+      };
+      
+      addLog(`Creating new session: ${JSON.stringify(sessionConfig)}`);
+      
+      const wsResponse = await sendMessage(sessionConfig as any);
+      
+      if (wsResponse.type === 'session_created') {
+        setSessionId(wsResponse.sessionId);
+        setStatus('connected');
+        setIsLoading(false);
+        addLog(`New session created! ID: ${wsResponse.sessionId}`);
+        
+        // Store session ID for reconnection
+        const sessionStorageKey = `ccmanager_session_${projectId}_${sessionType}`;
+        localStorage.setItem(sessionStorageKey, wsResponse.sessionId);
+      } else if (wsResponse.type === 'error' || wsResponse.type === 'session_error') {
+        throw new Error(wsResponse.error || 'Failed to create session');
+      }
+    } catch (err: any) {
+      addLog(`Error creating new session: ${err.message || err}`);
+      setError(err.message || 'Failed to create new session');
+      setIsLoading(false);
+    }
+  };
+
   if (showSessionPicker && availableSessions.length > 0) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-900 p-4">
         <div className="max-w-2xl w-full">
           <h3 className="text-lg font-semibold text-white mb-4">
-            Multiple active sessions found
+            Terminal Sessions
           </h3>
           <p className="text-gray-400 mb-6">
-            Choose which session to reconnect to:
+            {availableSessions.length === 1 
+              ? 'You have 1 active session. You can create additional sessions or manage the existing one.'
+              : `You have ${availableSessions.length} active sessions. Choose one to connect to or create a new one.`}
           </p>
           <div className="space-y-3">
             {availableSessions.map((session) => (
@@ -474,16 +566,27 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
               </div>
             ))}
           </div>
-          <button
-            onClick={() => {
-              setShowSessionPicker(false);
-              setAvailableSessions([]);
-              createOrReconnectSession();
-            }}
-            className="mt-6 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Create New Session Instead
-          </button>
+          <div className="mt-6 flex gap-3">
+            <button
+              onClick={async () => {
+                setShowSessionPicker(false);
+                await createNewSession();
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Create New Session
+            </button>
+            <button
+              onClick={() => {
+                setShowSessionPicker(false);
+                setAvailableSessions([]);
+              }}
+              className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -527,7 +630,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h3 className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
-              Claude
+              {sessionType === 'main' ? 'Claude' : 'Dev Server'}
             </h3>
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${
@@ -574,22 +677,41 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
                       <button
                         onClick={async () => {
                           setShowActionsMenu(false);
-                          const response = await sendMessage({ type: 'list_sessions' } as any);
-                          if (response.type === 'sessions_list') {
-                            const projectSessions = response.sessions.filter((s: any) => 
-                              s.workingDir === workingDir
-                            );
-                            if (projectSessions.length > 1) {
-                              setAvailableSessions(projectSessions);
-                              setShowSessionPicker(true);
-                            } else {
-                              addLog('No other sessions available for this project');
+                          try {
+                            const response = await sendMessage({ type: 'list_sessions' } as any);
+                            if (response.type === 'sessions_list') {
+                              const projectSessions = response.sessions.filter((s: any) => 
+                                s.workingDir === workingDir
+                              );
+                              if (projectSessions.length > 0) {
+                                setAvailableSessions(projectSessions);
+                                setShowSessionPicker(true);
+                              } else {
+                                // Show a message that no sessions exist
+                                setError('No sessions found for this project');
+                                setTimeout(() => setError(null), 3000);
+                              }
                             }
+                          } catch (err) {
+                            addLog(`Error listing sessions: ${err}`);
+                            setError('Failed to list sessions');
+                            setTimeout(() => setError(null), 3000);
                           }
                         }}
                         className="w-full px-4 py-2 text-sm text-left text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
                       >
                         Switch Session
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setShowActionsMenu(false);
+                          // Create a new session without checking for existing ones
+                          await createNewSession();
+                        }}
+                        className="w-full px-4 py-2 text-sm text-left text-gray-300 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        New Session
                       </button>
                       <button
                         onClick={() => {
@@ -620,6 +742,19 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Error Notification */}
+      {error && sessionId && (
+        <div className="bg-red-500 text-white px-4 py-2 text-sm flex items-center justify-between">
+          <span>{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="ml-4 hover:text-red-200"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Debug Log Panel */}
       {showDebugLog && (
@@ -652,13 +787,16 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
 
       {/* Terminal */}
       <div className="flex-1 min-h-0 bg-gray-900">
-        <TerminalView
-          ref={terminalRef}
-          sessionId={sessionId}
-          tabId={tabId}
-          status={status}
-          initialBuffer={sessionBuffer}
-        />
+        {sessionId && (
+          <TerminalView
+            ref={terminalRef}
+            sessionId={sessionId}
+            tabId={tabId}
+            status={status}
+            initialBuffer={sessionBuffer}
+            addLog={addLog}
+          />
+        )}
       </div>
     </div>
   );

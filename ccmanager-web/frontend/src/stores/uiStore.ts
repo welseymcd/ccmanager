@@ -11,6 +11,8 @@ interface UIState {
   
   // Modals/Dialogs
   isNewProjectDialogOpen: boolean;
+  isEditProjectDialogOpen: boolean;
+  editingProjectId: string | null;
   isSettingsDialogOpen: boolean;
   isTaskDialogOpen: boolean;
   
@@ -27,6 +29,8 @@ interface UIState {
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   openNewProjectDialog: () => void;
   closeNewProjectDialog: () => void;
+  openEditProjectDialog: (projectId: string) => void;
+  closeEditProjectDialog: () => void;
   openSettingsDialog: () => void;
   closeSettingsDialog: () => void;
   openTaskDialog: () => void;
@@ -45,6 +49,8 @@ export const useUIStore = create<UIState>()(
         sidebarCollapsed: false,
         theme: 'system',
         isNewProjectDialogOpen: false,
+        isEditProjectDialogOpen: false,
+        editingProjectId: null,
         isSettingsDialogOpen: false,
         isTaskDialogOpen: false,
         connectionStatus: 'disconnected',
@@ -59,6 +65,14 @@ export const useUIStore = create<UIState>()(
         setTheme: (theme) => set({ theme }),
         openNewProjectDialog: () => set({ isNewProjectDialogOpen: true }),
         closeNewProjectDialog: () => set({ isNewProjectDialogOpen: false }),
+        openEditProjectDialog: (projectId) => set({ 
+          isEditProjectDialogOpen: true, 
+          editingProjectId: projectId 
+        }),
+        closeEditProjectDialog: () => set({ 
+          isEditProjectDialogOpen: false, 
+          editingProjectId: null 
+        }),
         openSettingsDialog: () => set({ isSettingsDialogOpen: true }),
         closeSettingsDialog: () => set({ isSettingsDialogOpen: false }),
         openTaskDialog: () => set({ isTaskDialogOpen: true }),

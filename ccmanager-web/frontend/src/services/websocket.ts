@@ -100,8 +100,17 @@ export class WebSocketClient extends EventEmitter {
 
     messageTypes.forEach(type => {
       this.socket!.on(type, (message: ServerToClientMessage) => {
+        // Debug log for terminal output
+        if (type === 'terminal_output') {
+          console.log(`[WebSocket] Received terminal_output for session ${(message as any).sessionId}, data length: ${(message as any).data?.length || 0}`);
+        }
+        
+        // Debug log all messages
+        console.log(`[WebSocket] Received message type: ${type}, requestId: ${message.requestId}`);
+        
         // Handle request callbacks
         if (message.requestId && this.requestCallbacks.has(message.requestId)) {
+          console.log(`[WebSocket] Found callback for requestId: ${message.requestId}`);
           const callback = this.requestCallbacks.get(message.requestId)!;
           callback(message);
           this.requestCallbacks.delete(message.requestId);
@@ -140,7 +149,9 @@ export class WebSocketClient extends EventEmitter {
         });
 
         // Send message - Socket.IO expects event name and data separately
-        this.socket.emit(message.type, messageWithId);
+        // The message already has the type field, so we pass the entire message
+        console.log(`[WebSocket] Sending message type: ${messageWithId.type}, with requestId: ${requestId}`);
+        this.socket.emit(messageWithId.type, messageWithId);
 
         // Timeout after 30 seconds
         setTimeout(() => {

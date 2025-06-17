@@ -17,16 +17,53 @@ const Session: React.FC<SessionProps> = ({
 }) => {
 	const {stdout} = useStdout();
 	const [isExiting, setIsExiting] = useState(false);
+	const [currentSession, setCurrentSession] = useState(session);
 
 	useEffect(() => {
 		if (!stdout) return;
 
-		// Clear screen when entering session
-		stdout.write('\x1B[2J\x1B[H');
+		// Wait for process to be available
+		if (!currentSession.process) {
+			console.log(
+				'[Session] Waiting for process to be created for session:',
+				currentSession.id,
+			);
+			// For restored sessions, the process will be created shortly
+			return;
+		}
+
+		// Check if this is a restored session with output history
+		const hasRestoredOutput =
+			currentSession.isRestored && currentSession.outputHistory.length > 0;
+
+		console.log('[Session] Setting up session:', {
+			id: currentSession.id,
+			isRestored: currentSession.isRestored,
+			outputHistoryLength: currentSession.outputHistory.length,
+			hasProcess: !!currentSession.process,
+		});
+
+		// Only clear screen for new sessions without restored output
+		if (!hasRestoredOutput) {
+			stdout.write('\x1B[2J\x1B[H');
+		}
 
 		// Handle session restoration
 		const handleSessionRestore = (restoredSession: SessionType) => {
-			if (restoredSession.id === session.id) {
+			console.log(
+				'[Session] handleSessionRestore called for:',
+				restoredSession.id,
+				'current session:',
+				currentSession.id,
+			);
+			if (restoredSession.id === currentSession.id) {
+				console.log(
+					'[Session] Restoring output, buffer count:',
+					restoredSession.outputHistory.length,
+				);
+				// Clear screen before restoring output
+				stdout.write('\x1B[2J\x1B[H');
+
 				// Replay all buffered output, but skip the initial clear if present
 				for (let i = 0; i < restoredSession.outputHistory.length; i++) {
 					const buffer = restoredSession.outputHistory[i];
@@ -54,32 +91,58 @@ const Session: React.FC<SessionProps> = ({
 		sessionManager.on('sessionRestore', handleSessionRestore);
 
 		// Mark session as active (this will trigger the restore event)
-		sessionManager.setSessionActive(session.worktreePath, true);
+		console.log(
+			'[Session] Setting session active for:',
+			currentSession.worktreePath,
+		);
+		sessionManager.setSessionActive(currentSession.worktreePath, true);
 
 		// Listen for session data events
 		const handleSessionData = (activeSession: SessionType, data: string) => {
-			// Only handle data for our session
-			if (activeSession.id === session.id && !isExiting) {
+			// Only handle data for our session (check both original and current)
+			if (
+				(activeSession.id === session.id ||
+					activeSession.id === currentSession.id) &&
+				!isExiting
+			) {
 				stdout.write(data);
 			}
 		};
 
 		const handleSessionExit = (exitedSession: SessionType) => {
-			if (exitedSession.id === session.id) {
+			if (
+				exitedSession.id === session.id ||
+				exitedSession.id === currentSession.id
+			) {
 				setIsExiting(true);
 				// Don't call onReturnToMenu here - App component handles it
 			}
 		};
 
+		// Handle when a restored session gets its process created
+		const handleSessionCreated = (createdSession: SessionType) => {
+			if (
+				createdSession.id === session.id ||
+				createdSession.worktreePath === session.worktreePath
+			) {
+				console.log('[Session] Session process created, updating state');
+				// Update our state with the session that has a process
+				setCurrentSession(createdSession);
+			}
+		};
+
 		sessionManager.on('sessionData', handleSessionData);
 		sessionManager.on('sessionExit', handleSessionExit);
+		sessionManager.on('sessionCreated', handleSessionCreated);
 
 		// Handle terminal resize
 		const handleResize = () => {
-			session.process.resize(
-				process.stdout.columns || 80,
-				process.stdout.rows || 24,
-			);
+			if (currentSession.process) {
+				currentSession.process.resize(
+					process.stdout.columns || 80,
+					process.stdout.rows || 24,
+				);
+			}
 		};
 
 		stdout.on('resize', handleResize);
@@ -118,7 +181,9 @@ const Session: React.FC<SessionProps> = ({
 			}
 
 			// Pass all other input directly to the PTY
-			session.process.write(data);
+			if (currentSession.process) {
+				currentSession.process.write(data);
+			}
 		};
 
 		stdin.on('data', handleStdinData);
@@ -149,9 +214,17 @@ const Session: React.FC<SessionProps> = ({
 			sessionManager.off('sessionRestore', handleSessionRestore);
 			sessionManager.off('sessionData', handleSessionData);
 			sessionManager.off('sessionExit', handleSessionExit);
+			sessionManager.off('sessionCreated', handleSessionCreated);
 			stdout.off('resize', handleResize);
 		};
-	}, [session, sessionManager, stdout, onReturnToMenu, isExiting]);
+	}, [
+		session,
+		currentSession,
+		sessionManager,
+		stdout,
+		onReturnToMenu,
+		isExiting,
+	]);
 
 	// Return null to render nothing (PTY output goes directly to stdout)
 	return null;

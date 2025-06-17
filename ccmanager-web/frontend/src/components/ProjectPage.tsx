@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Terminal, Server, Menu } from 'lucide-react';
-import { useProjectStore } from '../stores/projectStore';
+import { Terminal, Server, Menu, ArrowLeft } from 'lucide-react';
+import { useParams, Link } from '@tanstack/react-router';
 import { useSessionStore } from '../stores/sessionStore';
 import { useUIStore } from '../stores/uiStore';
 import { useUpdateProjectAccess } from '../hooks/useProjects';
+import { useProjects } from '../hooks/useProjects';
 import ProjectSidebar from './ProjectSidebar';
 import ProjectTerminalView from './ProjectTerminalView';
 import DevServerPanel from './DevServerPanel';
 import * as Tabs from '@radix-ui/react-tabs';
 
 const ProjectPage: React.FC = () => {
-  const { currentProject } = useProjectStore();
+  const { projectId } = useParams({ from: '/_authenticated/projects/$projectId' });
+  const { data: projects } = useProjects();
+  const currentProject = projects?.find(p => p.id === projectId);
   const { activeProjectSessionType, setActiveSessionType } = useSessionStore();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
   const updateAccess = useUpdateProjectAccess();
@@ -22,10 +25,6 @@ const ProjectPage: React.FC = () => {
       updateAccess.mutate(currentProject.id);
     }
   }, [currentProject?.id]);
-
-  if (!currentProject) {
-    return null;
-  }
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -54,10 +53,46 @@ const ProjectPage: React.FC = () => {
     };
   }, [isResizing]);
 
+  // Handle loading state
+  if (!projects) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-gray-500">Loading project...</div>
+      </div>
+    );
+  }
+
+  // Handle project not found
+  if (!currentProject) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-red-500">Project not found</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full min-h-0 bg-gray-50 dark:bg-gray-900">
-      {/* Sidebar */}
-      {!sidebarCollapsed && (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Projects
+          </Link>
+          <div className="text-sm text-gray-500 dark:text-gray-400">
+            <span className="font-medium text-gray-900 dark:text-white">{currentProject.name}</span>
+          </div>
+        </div>
+      </div>
+      
+      {/* Main Content */}
+      <div className="flex flex-1 min-h-0 bg-gray-50 dark:bg-gray-900">
+        {/* Sidebar */}
+        {!sidebarCollapsed && (
         <div
           className="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex-shrink-0 transition-all duration-300"
           style={{ width: `${sidebarWidth}px` }}
@@ -132,6 +167,7 @@ const ProjectPage: React.FC = () => {
             />
           </Tabs.Content>
         </Tabs.Root>
+      </div>
       </div>
     </div>
   );

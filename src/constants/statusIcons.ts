@@ -12,8 +12,10 @@ export const STATUS_LABELS = {
 
 export const MENU_ICONS = {
 	NEW_WORKTREE: '⊕',
+	EDIT_WORKTREE: '✎',
 	MERGE_WORKTREE: '⇄',
 	DELETE_WORKTREE: '✕',
+	VIEW_MODIFICATIONS: '📊',
 	CONFIGURE_SHORTCUTS: '⌨',
 	EXIT: '⏻',
 } as const;

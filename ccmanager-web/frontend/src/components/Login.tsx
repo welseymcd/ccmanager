@@ -1,11 +1,12 @@
 import { useState, FormEvent } from 'react';
 
 interface LoginProps {
-  onLogin: (token: string) => void;
+  onLogin?: (token: string) => void;
+  onSuccess?: () => void;
   error?: string;
 }
 
-export function Login({ onLogin, error }: LoginProps) {
+export function Login({ onLogin, onSuccess, error }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -32,7 +33,12 @@ export function Login({ onLogin, error }: LoginProps) {
       if (response.ok && data.token) {
         // Store token in localStorage and call onLogin
         localStorage.setItem('auth_token', data.token);
-        onLogin(data.token);
+        if (onLogin) {
+          onLogin(data.token);
+        }
+        if (onSuccess) {
+          onSuccess();
+        }
       } else {
         setLocalError(data.error || (isRegistering ? 'Registration failed' : 'Login failed'));
       }

@@ -3,6 +3,7 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { SearchAddon } from 'xterm-addon-search';
 import { WebLinksAddon } from 'xterm-addon-web-links';
+import 'xterm/css/xterm.css';
 import { useTabStore } from '../stores/tabStore';
 import { useWebSocket } from '../hooks/useWebSocket';
 
@@ -11,6 +12,7 @@ interface TerminalViewProps {
   tabId: string;
   status: 'connecting' | 'connected' | 'disconnected' | 'error';
   initialBuffer?: string;
+  addLog?: (message: string) => void;
 }
 
 interface TerminalHandle {
@@ -21,11 +23,12 @@ interface TerminalHandle {
 }
 
 export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
-  ({ sessionId, tabId, status, initialBuffer }, ref) => {
+  ({ sessionId, tabId, status, initialBuffer, addLog }, ref) => {
     const terminalContainerRef = useRef<HTMLDivElement>(null);
     const terminalRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
     const searchAddonRef = useRef<SearchAddon | null>(null);
+    const initializingRef = useRef(false);
     const { updateTab } = useTabStore();
     const { sendTerminalData, subscribeToSession, unsubscribeFromSession, client } = useWebSocket();
     const [, setIsInitialized] = useState(false);
@@ -41,11 +44,37 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
       }
     }, []);
 
+    // Write initial buffer when it becomes available
+    useEffect(() => {
+      if (initialBuffer && terminalRef.current && !terminalRef.current.element?.hasAttribute('data-buffer-written')) {
+        if (addLog) {
+          addLog(`[TerminalView] Writing initial buffer to terminal: ${initialBuffer.length} bytes`);
+        }
+        terminalRef.current.write(initialBuffer);
+        // Mark that we've written the buffer to avoid duplicate writes
+        terminalRef.current.element?.setAttribute('data-buffer-written', 'true');
+      }
+    }, [initialBuffer, addLog]);
+
     // Initialize terminal
     useEffect(() => {
+      if (addLog) {
+        addLog(`[TerminalView] Terminal init effect - sessionId: ${sessionId}, status: ${status}, hasContainer: ${!!terminalContainerRef.current}`);
+      }
+      
       if (!terminalContainerRef.current || !sessionId || status !== 'connected') {
         return;
       }
+      
+      // Prevent duplicate initialization
+      if (initializingRef.current || terminalRef.current) {
+        if (addLog) {
+          addLog(`[TerminalView] Terminal already initializing or initialized, skipping...`);
+        }
+        return;
+      }
+      
+      initializingRef.current = true;
 
       // Create terminal instance
       const terminal = new Terminal({
@@ -75,7 +104,11 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
           brightWhite: '#e5e5e5'
         },
         allowTransparency: false,
-        scrollback: 10000
+        scrollback: 10000,
+        // Ensure the terminal is interactive
+        disableStdin: false,
+        // Disable automatic device attribute requests
+        windowsMode: false
       });
 
       // Create and load addons
@@ -98,24 +131,80 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
       // Initial fit
       setTimeout(() => {
         fitAddon.fit();
+        // Focus the terminal after opening
+        terminal.focus();
         // Send initial size to backend
         if (sessionId && client) {
           const dimensions = fitAddon.proposeDimensions();
-          if (dimensions) {
+          if (dimensions && dimensions.cols > 0 && dimensions.rows > 0) {
             client.sendRaw({
               type: 'resize_terminal',
               sessionId,
               cols: dimensions.cols,
               rows: dimensions.rows
             } as any);
+            
+            if (addLog) {
+              addLog(`[TerminalView] Terminal dimensions: ${dimensions.cols}x${dimensions.rows}`);
+            }
+          } else {
+            // Fallback dimensions if proposal fails
+            const fallbackCols = 80;
+            const fallbackRows = 24;
+            client.sendRaw({
+              type: 'resize_terminal',
+              sessionId,
+              cols: fallbackCols,
+              rows: fallbackRows
+            } as any);
+            
+            if (addLog) {
+              addLog(`[TerminalView] Using fallback dimensions: ${fallbackCols}x${fallbackRows}`);
+            }
           }
         }
-      }, 0);
+      }, 100);
 
       // Handle terminal input
       terminal.onData((data) => {
+        // Filter out device attribute escape sequences that create feedback loops
+        const deviceAttributePatterns = [
+          /^\x1b\[>0;276;0c$/,  // Secondary Device Attribute response
+          /^\x1b\[\?1;2c$/,      // Primary Device Attribute response
+          /^\x1b\]10;rgb:[0-9a-f\/]+\x1b\\$/,  // OSC 10 (foreground color)
+          /^\x1b\]11;rgb:[0-9a-f\/]+\x1b\\$/   // OSC 11 (background color)
+        ];
+        
+        // Check if this is a device attribute response
+        const isDeviceAttribute = deviceAttributePatterns.some(pattern => pattern.test(data));
+        
+        if (isDeviceAttribute) {
+          if (addLog) {
+            addLog(`[TerminalView] Filtered out device attribute: ${JSON.stringify(data)}`);
+          }
+          return; // Don't send device attributes to prevent loops
+        }
+        
+        if (addLog) {
+          addLog(`[TerminalView] onData triggered with data: ${JSON.stringify(data)} (length: ${data.length})`);
+        }
+        
         if (sessionId) {
-          sendTerminalData(sessionId, data);
+          if (addLog) {
+            addLog(`[TerminalView] Sending terminal data: ${JSON.stringify(data)} to session ${sessionId}`);
+          }
+          try {
+            sendTerminalData(sessionId, data);
+          } catch (error) {
+            if (addLog) {
+              addLog(`[TerminalView] Error sending data: ${error}`);
+            }
+            terminal.write('\r\n\x1b[31mSession disconnected. Please create a new session.\x1b[0m\r\n');
+          }
+        } else {
+          if (addLog) {
+            addLog(`[TerminalView] No sessionId, cannot send data`);
+          }
         }
       });
 
@@ -145,11 +234,17 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
       });
 
       // Subscribe to session
+      if (addLog) {
+        addLog(`[TerminalView] Subscribing to session: ${sessionId}`);
+      }
       subscribeToSession(sessionId);
 
       // Listen for terminal output
       const handleTerminalOutput = (message: any) => {
         if (message.sessionId === sessionId && message.data) {
+          if (addLog) {
+            addLog(`[TerminalView] Received terminal output: ${message.data.length} bytes`);
+          }
           terminal.write(message.data);
         }
       };
@@ -159,10 +254,19 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
       }
 
       setIsInitialized(true);
-      
-      // Write initial buffer if provided
-      if (initialBuffer) {
+
+      // Write initial buffer if available
+      if (initialBuffer && initialBuffer.length > 0) {
+        if (addLog) {
+          addLog(`[TerminalView] Writing initial buffer after terminal creation: ${initialBuffer.length} bytes`);
+        }
+        // Clear terminal first to ensure clean state
+        terminal.clear();
+        // Reset cursor to home position
+        terminal.write('\x1b[H');
+        // Write the buffer
         terminal.write(initialBuffer);
+        terminal.element?.setAttribute('data-buffer-written', 'true');
       }
 
       // Set up resize observer
@@ -189,9 +293,10 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
         terminalRef.current = null;
         fitAddonRef.current = null;
         searchAddonRef.current = null;
+        initializingRef.current = false;
         setIsInitialized(false);
       };
-    }, [sessionId, status, sendTerminalData, subscribeToSession, unsubscribeFromSession, client, handleResize]);
+    }, [sessionId, status, sendTerminalData, subscribeToSession, unsubscribeFromSession, client, handleResize, initialBuffer]);
 
     // Handle window resize
     useEffect(() => {
@@ -242,7 +347,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
     };
 
     return (
-      <div className="h-full w-full bg-black">
+      <div className="h-full w-full bg-black relative">
         {status !== 'connected' && (
           <div className="flex items-center justify-center h-full text-white">
             <div className="text-center">
@@ -271,8 +376,23 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
         )}
         <div 
           ref={terminalContainerRef} 
-          className={`h-full w-full ${status !== 'connected' ? 'hidden' : ''}`}
-          style={{ padding: '4px' }}
+          className={`h-full w-full overflow-hidden ${status !== 'connected' ? 'hidden' : 'block'}`}
+          style={{ 
+            padding: '4px',
+            minHeight: '200px',
+            minWidth: '400px'
+          }}
+          onClick={() => {
+            if (terminalRef.current) {
+              terminalRef.current.focus();
+            }
+          }}
+          onFocus={() => {
+            if (terminalRef.current) {
+              terminalRef.current.focus();
+            }
+          }}
+          tabIndex={0}
         />
       </div>
     );

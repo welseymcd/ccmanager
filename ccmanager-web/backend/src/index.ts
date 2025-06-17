@@ -19,6 +19,7 @@ import { createSessionRoutes } from './routes/sessions';
 import { createMonitoringRoutes } from './routes/monitoring';
 import { createProjectRoutes } from './routes/projects';
 import { createTaskRoutes } from './routes/tasks';
+import { createExplorerRoutes } from './routes/explorer';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 // Load environment variables
@@ -225,6 +226,7 @@ app.use('/api/sessions', createSessionRoutes(authService, sessionHistoryManager)
 app.use('/api/monitoring', createMonitoringRoutes(authService, systemMonitor));
 app.use('/api/projects', createProjectRoutes(authService, databaseManager, sessionManager));
 app.use('/api/projects', createTaskRoutes(authService, databaseManager));
+app.use('/api/explorer', createExplorerRoutes(authService, databaseManager));
 
 // Setup WebSocket handlers with database integration
 setupWebSocketHandlers(io, apiKeyManager, sessionHistoryManager, sessionManager);

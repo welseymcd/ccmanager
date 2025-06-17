@@ -20,10 +20,36 @@ export function setupWebSocketHandlers(
   // Use provided sessionManager or create a new one
   const manager = sessionManager || new SessionManager(apiKeyManager, sessionHistoryManager);
 
+  // Listen to SessionManager events for all sessions
+  manager.on('sessionData', ({ sessionId, data }) => {
+    logger.debug(`SessionManager emitted sessionData for ${sessionId}, data length: ${data.length}`);
+    const outputMessage: ServerToClientMessage = {
+      type: 'terminal_output',
+      sessionId,
+      data,
+      timestamp: Date.now()
+    };
+    // Emit to all connected clients - they will filter by sessionId
+    logger.debug(`Emitting terminal_output to ${io.sockets.sockets.size} clients`);
+    io.emit('terminal_output', outputMessage);
+  });
+
+  manager.on('sessionExit', ({ sessionId, exitCode }) => {
+    const closedMessage: ServerToClientMessage = {
+      type: 'session_closed',
+      sessionId,
+      exitCode,
+      timestamp: Date.now()
+    };
+    io.emit('session_closed', closedMessage);
+  });
+
   io.use(authenticateSocket);
 
+  // Log when clients connect/disconnect
   io.on('connection', (socket: Socket) => {
     logger.info(`WebSocket connection established: ${socket.id}`);
+    logger.info(`Total connected clients: ${io.sockets.sockets.size}`);
     
     // Send initial connection status
     const connectionMessage: ServerToClientMessage = {
@@ -62,7 +88,7 @@ export function setupWebSocketHandlers(
     });
 
     // Handle terminal input
-    socket.on('terminal_input', (message: ClientToServerMessage) => {
+    socket.on('terminal_input', async (message: ClientToServerMessage) => {
       if (message.type !== 'terminal_input') return;
       if (!(socket.data as SocketData).authenticated) {
         socket.emit('error', { error: 'Not authenticated' });
@@ -70,8 +96,50 @@ export function setupWebSocketHandlers(
       }
       
       try {
-        manager.writeToSession(message.sessionId, message.data);
+        await manager.writeToSession(message.sessionId, message.data);
       } catch (error: any) {
+        // If session not found, try to recreate it
+        if (error.message.includes('not found')) {
+          logger.info(`Session ${message.sessionId} not found, attempting to recreate`);
+          
+          try {
+            // Get session info from database
+            const sessionInfo = await sessionHistoryManager.getSession(message.sessionId);
+            if (sessionInfo && sessionInfo.status === 'active') {
+              // Recreate the session with the same ID
+              const newSessionId = await manager.recreateSession({
+                sessionId: message.sessionId,
+                userId: sessionInfo.user_id,
+                workingDir: sessionInfo.working_dir,
+                command: sessionInfo.command,
+                cols: 80,
+                rows: 24,
+                onData: (data: string) => {
+                  // The SessionManager will emit sessionData event which is handled globally
+                },
+                onExit: (exitCode: number) => {
+                  // The SessionManager will emit sessionExit event which is handled globally
+                }
+              });
+              
+              // Try writing again
+              manager.writeToSession(newSessionId, message.data);
+              
+              // Notify client that session was recreated
+              const recreatedMessage: ServerToClientMessage = {
+                type: 'session_recreated',
+                sessionId: newSessionId,
+                timestamp: Date.now()
+              };
+              socket.emit('session_recreated', recreatedMessage);
+              
+              return;
+            }
+          } catch (recreateError: any) {
+            logger.error(`Failed to recreate session: ${recreateError.message}`);
+          }
+        }
+        
         const errorMessage: ServerToClientMessage = {
           type: 'session_error',
           sessionId: message.sessionId,
@@ -102,22 +170,11 @@ export function setupWebSocketHandlers(
           cols: message.cols,
           rows: message.rows,
           onData: (data: string) => {
-            const output: ServerToClientMessage = {
-              type: 'terminal_output',
-              sessionId,
-              data,
-              timestamp: Date.now()
-            };
-            socket.emit('terminal_output', output);
+            // The SessionManager will emit sessionData event which is handled globally
+            // This ensures all sessions (including reattached ones) work correctly
           },
           onExit: (exitCode: number) => {
-            const closed: ServerToClientMessage = {
-              type: 'session_closed',
-              sessionId,
-              exitCode,
-              timestamp: Date.now()
-            };
-            socket.emit('session_closed', closed);
+            // The SessionManager will emit sessionExit event which is handled globally
           }
         });
         
@@ -171,7 +228,7 @@ export function setupWebSocketHandlers(
     });
 
     // Handle terminal resizing
-    socket.on('resize_terminal', (message: ClientToServerMessage) => {
+    socket.on('resize_terminal', async (message: ClientToServerMessage) => {
       if (message.type !== 'resize_terminal') return;
       if (!(socket.data as SocketData).authenticated) {
         socket.emit('error', { error: 'Not authenticated' });
@@ -179,8 +236,14 @@ export function setupWebSocketHandlers(
       }
       
       try {
-        manager.resizeSession(message.sessionId, message.cols, message.rows);
+        await manager.resizeSession(message.sessionId, message.cols, message.rows);
       } catch (error: any) {
+        logger.error(`Failed to resize terminal for session ${message.sessionId}: ${error.message}`, {
+          sessionId: message.sessionId,
+          cols: message.cols,
+          rows: message.rows,
+          error: error.stack
+        });
         const errorMessage: ServerToClientMessage = {
           type: 'session_error',
           sessionId: message.sessionId,
@@ -273,7 +336,7 @@ export function setupWebSocketHandlers(
     });
 
     // Handle get session buffer request
-    socket.on('get_session_buffer', (message: ClientToServerMessage) => {
+    socket.on('get_session_buffer', async (message: ClientToServerMessage) => {
       if (message.type !== 'get_session_buffer') return;
       if (!(socket.data as SocketData).authenticated) {
         socket.emit('error', { error: 'Not authenticated' });
@@ -291,7 +354,35 @@ export function setupWebSocketHandlers(
           throw new Error('Unauthorized access to session');
         }
 
-        const buffer = manager.getSessionBuffer(message.sessionId);
+        // Ensure the session is properly attached if using tmux
+        const session = manager.getSession(message.sessionId);
+        if (session && !session.pty && manager.isUsingTmux()) {
+          logger.info(`Session ${message.sessionId} has no PTY when getting buffer, attempting to reattach`);
+          await manager.ensureSessionAttached(message.sessionId);
+        }
+
+        // First try to get buffer from database (persistent across server restarts)
+        let buffer = '';
+        try {
+          const history = await sessionHistoryManager.getRecentHistory(message.sessionId, 5000);
+          if (history.length > 0) {
+            // Reconstruct the terminal output from history
+            // Simply concatenate the content as it was stored with original formatting
+            buffer = history.map(line => line.content).join('');
+            logger.info(`Restored ${history.length} lines from database for session ${message.sessionId}`);
+          }
+        } catch (dbError) {
+          logger.warn(`Could not restore from database: ${dbError}`);
+        }
+        
+        // If no database history, fall back to in-memory buffer or tmux
+        if (!buffer) {
+          buffer = await manager.getSessionBuffer(message.sessionId);
+          if (buffer) {
+            logger.info(`Using buffer for session ${message.sessionId}`);
+          }
+        }
+        
         const response: ServerToClientMessage = {
           type: 'session_buffer',
           sessionId: message.sessionId,

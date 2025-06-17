@@ -89,12 +89,20 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree}) => {
 			value: 'new-worktree',
 		});
 		menuItems.push({
+			label: `${MENU_ICONS.EDIT_WORKTREE} Edit Worktree`,
+			value: 'edit-worktree',
+		});
+		menuItems.push({
 			label: `${MENU_ICONS.MERGE_WORKTREE} Merge Worktree`,
 			value: 'merge-worktree',
 		});
 		menuItems.push({
 			label: `${MENU_ICONS.DELETE_WORKTREE} Delete Worktree`,
 			value: 'delete-worktree',
+		});
+		menuItems.push({
+			label: `${MENU_ICONS.VIEW_MODIFICATIONS} View Modifications`,
+			value: 'view-modifications',
 		});
 		menuItems.push({
 			label: `${MENU_ICONS.CONFIGURE_SHORTCUTS} Configure Shortcuts`,
@@ -118,6 +126,14 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree}) => {
 				isMainWorktree: false,
 				hasSession: false,
 			});
+		} else if (item.value === 'edit-worktree') {
+			// Handle in parent component - use special marker
+			onSelectWorktree({
+				path: 'EDIT_WORKTREE',
+				branch: '',
+				isMainWorktree: false,
+				hasSession: false,
+			});
 		} else if (item.value === 'merge-worktree') {
 			// Handle in parent component - use special marker
 			onSelectWorktree({
@@ -130,6 +146,14 @@ const Menu: React.FC<MenuProps> = ({sessionManager, onSelectWorktree}) => {
 			// Handle in parent component - use special marker
 			onSelectWorktree({
 				path: 'DELETE_WORKTREE',
+				branch: '',
+				isMainWorktree: false,
+				hasSession: false,
+			});
+		} else if (item.value === 'view-modifications') {
+			// Handle in parent component - use special marker
+			onSelectWorktree({
+				path: 'VIEW_MODIFICATIONS',
 				branch: '',
 				isMainWorktree: false,
 				hasSession: false,

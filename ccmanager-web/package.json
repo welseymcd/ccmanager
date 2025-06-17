@@ -18,7 +18,7 @@
     "test": "npm run test:backend && npm run test:frontend",
     "test:backend": "cd backend && npm test",
     "test:frontend": "cd frontend && npm test",
-    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit -p backend && tsc --noEmit -p frontend"
   },
   "devDependencies": {

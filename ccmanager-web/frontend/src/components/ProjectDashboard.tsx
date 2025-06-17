@@ -1,24 +1,26 @@
 import React from 'react';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, FolderOpen } from 'lucide-react';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useProjects } from '../hooks/useProjects';
 import { useProjectStore } from '../stores/projectStore';
 import { useUIStore } from '../stores/uiStore';
 import ProjectCard from './ProjectCard';
 import NewProjectDialog from './NewProjectDialog';
+import EditProjectDialog from './EditProjectDialog';
 
-interface ProjectDashboardProps {
-  onLogout?: () => void;
-}
-
-const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ onLogout }) => {
-  const { projects, isProjectDashboard } = useProjectStore();
+const ProjectDashboard: React.FC = () => {
+  const navigate = useNavigate();
+  const { projects } = useProjectStore();
   const { openNewProjectDialog } = useUIStore();
   const { data: apiProjects, isLoading, error } = useProjects();
 
   // Use API projects if available, otherwise use store projects
   const displayProjects = apiProjects || projects;
 
-  if (!isProjectDashboard) return null;
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    navigate({ to: '/login' });
+  };
 
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
@@ -30,6 +32,13 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ onLogout }) => {
               CCManager Projects
             </h1>
             <div className="flex items-center gap-2">
+              <Link
+                to="/explorer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+              >
+                <FolderOpen className="w-5 h-5" />
+                <span className="hidden sm:inline">File Explorer</span>
+              </Link>
               <button
                 onClick={openNewProjectDialog}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -37,14 +46,12 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ onLogout }) => {
                 <Plus className="w-5 h-5" />
                 <span className="hidden sm:inline">New Project</span>
               </button>
-              {onLogout && (
-                <button
-                  onClick={onLogout}
-                  className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                >
-                  Logout
-                </button>
-              )}
+              <button
+                onClick={handleLogout}
+                className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                Logout
+              </button>
             </div>
           </div>
         </div>
@@ -106,6 +113,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ onLogout }) => {
 
       {/* Dialogs */}
       <NewProjectDialog />
+      <EditProjectDialog />
     </div>
   );
 };

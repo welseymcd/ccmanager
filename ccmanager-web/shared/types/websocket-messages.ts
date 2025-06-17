@@ -91,6 +91,11 @@ export interface SessionErrorMessage extends ServerMessage {
   error: string;
 }
 
+export interface SessionRecreatedMessage extends ServerMessage {
+  type: 'session_recreated';
+  sessionId: string;
+}
+
 export interface ConnectionStatusMessage extends ServerMessage {
   type: 'connection_status';
   status: ConnectionStatus;
@@ -143,6 +148,7 @@ export type ServerToClientMessage =
   | SessionCreatedMessage
   | SessionClosedMessage
   | SessionErrorMessage
+  | SessionRecreatedMessage
   | ConnectionStatusMessage
   | AuthenticationResultMessage
   | SessionsListMessage

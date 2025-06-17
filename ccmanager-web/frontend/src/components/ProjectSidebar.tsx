@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronRight, ChevronDown, ExternalLink, FolderOpen, Terminal } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
 import { Project } from '../stores/projectStore';
 import { useUIStore } from '../stores/uiStore';
 import TaskList from './TaskList';
@@ -11,6 +12,7 @@ interface ProjectSidebarProps {
 const ProjectSidebar: React.FC<ProjectSidebarProps> = ({ project }) => {
   const { showCompletedTasks, toggleCompletedTasks } = useUIStore();
   const [isProjectInfoExpanded, setIsProjectInfoExpanded] = useState(true);
+  const navigate = useNavigate();
 
   const handleOpenInVSCode = () => {
     // This would typically call an API endpoint that executes 'code' command
@@ -18,8 +20,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({ project }) => {
   };
 
   const handleOpenInExplorer = () => {
-    // This would typically call an API endpoint that opens the file explorer
-    console.log('Opening in file explorer:', project.localPath);
+    navigate({ to: '/explorer', search: { projectId: project.id } });
   };
 
   return (

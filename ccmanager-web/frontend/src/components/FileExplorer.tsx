@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { 
@@ -18,6 +18,7 @@ import {
   X
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useProjects } from '@/hooks/useProjects'
 
 interface FileSystemItem {
   name: string
@@ -35,11 +36,20 @@ interface FileExplorerProps {
 }
 
 export default function FileExplorer({ projectId, basePath = '/' }: FileExplorerProps) {
+  const { data: projects } = useProjects()
+  const project = projects?.find(p => p.id === projectId)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPath, setCurrentPath] = useState(basePath)
   const queryClient = useQueryClient()
+
+  // Set the base path to the project's working directory when project is loaded
+  useEffect(() => {
+    if (project && currentPath === '/') {
+      setCurrentPath(project.workingDir || project.localPath || '/')
+    }
+  }, [project])
 
   // Fetch directory contents
   const { data: items, isLoading, error, refetch } = useQuery<FileSystemItem[]>({
@@ -159,13 +169,15 @@ export default function FileExplorer({ projectId, basePath = '/' }: FileExplorer
       <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link
-            to="/"
+            to={project ? `/projects/${project.id}` : "/"}
             className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 rounded-md transition-colors"
           >
             <ChevronRight className="w-4 h-4 rotate-180" />
-            Back to Projects
+            {project ? `Back to ${project.name}` : 'Back to Projects'}
           </Link>
-          <h1 className="text-lg font-semibold">File Explorer</h1>
+          <h1 className="text-lg font-semibold">
+            File Explorer {project && <span className="text-gray-400 text-sm">- {project.name}</span>}
+          </h1>
         </div>
       </div>
       

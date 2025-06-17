@@ -1,7 +1,9 @@
 import React from 'react';
 import { MoreVertical, Circle, GitBranch, Server, CheckSquare, ExternalLink, Trash2, Edit } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
 import { Project } from '../stores/projectStore';
 import { useProjectStore } from '../stores/projectStore';
+import { useUIStore } from '../stores/uiStore';
 import { useUpdateProjectAccess, useDeleteProject } from '../hooks/useProjects';
 import { formatDistanceToNow } from 'date-fns';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
@@ -11,13 +13,16 @@ interface ProjectCardProps {
 }
 
 const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
+  const navigate = useNavigate();
   const { selectProject } = useProjectStore();
+  const { openEditProjectDialog } = useUIStore();
   const updateAccess = useUpdateProjectAccess();
   const deleteProject = useDeleteProject();
 
   const handleOpenProject = () => {
     selectProject(project.id);
     updateAccess.mutate(project.id);
+    navigate({ to: '/projects/$projectId', params: { projectId: project.id } });
   };
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -66,7 +71,10 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
             >
               <DropdownMenu.Item
                 className="px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer flex items-center gap-2"
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEditProjectDialog(project.id);
+                }}
               >
                 <Edit className="w-4 h-4" />
                 Edit

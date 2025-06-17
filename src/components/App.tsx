@@ -5,7 +5,9 @@ import Session from './Session.js';
 import NewWorktree from './NewWorktree.js';
 import DeleteWorktree from './DeleteWorktree.js';
 import MergeWorktree from './MergeWorktree.js';
+import EditWorktree from './EditWorktree.js';
 import ConfigureShortcuts from './ConfigureShortcuts.js';
+import CodeModificationViewer from './CodeModificationViewer.js';
 import {SessionManager} from '../services/sessionManager.js';
 import {WorktreeService} from '../services/worktreeService.js';
 import {Worktree, Session as SessionType} from '../types/index.js';
@@ -21,6 +23,8 @@ type View =
 	| 'deleting-worktree'
 	| 'merge-worktree'
 	| 'merging-worktree'
+	| 'edit-worktree'
+	| 'view-modifications'
 	| 'configure-shortcuts';
 
 const App: React.FC = () => {
@@ -106,6 +110,18 @@ const App: React.FC = () => {
 			return;
 		}
 
+		// Check if this is the edit worktree option
+		if (worktree.path === 'EDIT_WORKTREE') {
+			setView('edit-worktree');
+			return;
+		}
+
+		// Check if this is the view modifications option
+		if (worktree.path === 'VIEW_MODIFICATIONS') {
+			setView('view-modifications');
+			return;
+		}
+
 		// Check if this is the configure shortcuts option
 		if (worktree.path === 'CONFIGURE_SHORTCUTS') {
 			setView('configure-shortcuts');
@@ -119,12 +135,10 @@ const App: React.FC = () => {
 			return;
 		}
 
-		// Get or create session for this worktree
-		let session = sessionManager.getSession(worktree.path);
-
-		if (!session) {
-			session = sessionManager.createSession(worktree.path);
-		}
+		// Create or get session for this worktree
+		// createSession will return existing session or create a new one
+		// and ensure the process exists for restored sessions
+		const session = sessionManager.createSession(worktree.path);
 
 		setActiveSession(session);
 		setView('session');
@@ -347,6 +361,38 @@ const App: React.FC = () => {
 
 	if (view === 'configure-shortcuts') {
 		return <ConfigureShortcuts onComplete={handleReturnToMenu} />;
+	}
+
+	if (view === 'edit-worktree') {
+		return (
+			<Box flexDirection="column">
+				{error && (
+					<Box marginBottom={1}>
+						<Text color="red">Error: {error}</Text>
+					</Box>
+				)}
+				<EditWorktree
+					onComplete={handleReturnToMenu}
+					onCancel={handleReturnToMenu}
+				/>
+			</Box>
+		);
+	}
+
+	if (view === 'view-modifications') {
+		return (
+			<Box flexDirection="column">
+				{error && (
+					<Box marginBottom={1}>
+						<Text color="red">Error: {error}</Text>
+					</Box>
+				)}
+				<CodeModificationViewer
+					onComplete={handleReturnToMenu}
+					onCancel={handleReturnToMenu}
+				/>
+			</Box>
+		);
 	}
 
 	return null;
