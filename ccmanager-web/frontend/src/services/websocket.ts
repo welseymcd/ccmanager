@@ -32,6 +32,7 @@ export class WebSocketClient extends EventEmitter {
   private messageQueue: QueuedMessage[] = [];
   private _isConnected = false;
   private authToken: string = '';
+  private handlersSetup = false;
 
   constructor(private options: WebSocketClientOptions = {}) {
     super();
@@ -82,7 +83,9 @@ export class WebSocketClient extends EventEmitter {
   }
 
   private setupMessageHandlers() {
-    if (!this.socket) return;
+    if (!this.socket || this.handlersSetup) return;
+    
+    this.handlersSetup = true;
 
     // Handle all server messages
     const messageTypes: Array<ServerToClientMessage['type']> = [
@@ -117,6 +120,7 @@ export class WebSocketClient extends EventEmitter {
         }
 
         // Emit message event
+        // Only emit once per message to avoid duplicates
         this.emit('message', message);
         this.emit(type, message);
       });
@@ -223,6 +227,7 @@ export class WebSocketClient extends EventEmitter {
       this.socket.disconnect();
       this.socket = null;
       this._isConnected = false;
+      this.handlersSetup = false;
     }
   }
 
@@ -243,6 +248,7 @@ let instance: WebSocketClient | null = null;
 
 export function getWebSocketClient(options?: WebSocketClientOptions): WebSocketClient {
   if (!instance) {
+    console.log('[WebSocket] Creating new WebSocket client instance');
     instance = new WebSocketClient(options);
   }
   return instance;

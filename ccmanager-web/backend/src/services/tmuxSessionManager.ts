@@ -28,8 +28,16 @@ export class TmuxSessionManager extends EventEmitter {
     
     try {
       // Create detached tmux session
+      // For dev server commands, wrap in bash and keep session alive after command exits
+      let sessionCommand = command;
+      if (command.includes('npm') || command.includes('yarn') || command.includes('pnpm') || 
+          command.includes('dev') || command.includes('start') || command.includes('.sh')) {
+        // Keep the session alive after the dev server exits
+        sessionCommand = `bash -c "${command}; echo ''; echo '=========================================='; echo 'Process exited. Press Enter to close or run commands...'; exec bash"`;
+      }
+      
       await execAsync(
-        `tmux new-session -d -s ${tmuxSessionName} -c "${workingDir}" -x ${cols} -y ${rows} "${command}"`
+        `tmux new-session -d -s ${tmuxSessionName} -c "${workingDir}" -x ${cols} -y ${rows} "${sessionCommand}"`
       );
       
       // Attach to it via node-pty
