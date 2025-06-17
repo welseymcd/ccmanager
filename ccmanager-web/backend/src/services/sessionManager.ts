@@ -365,18 +365,22 @@ export class SessionManager extends EventEmitter {
         
         try {
           // Create detached tmux session
-          // For dev server commands, wrap in bash and keep session alive after command exits
-          let sessionCommand = tmuxCommand;
+          // For dev server commands, keep session alive after command exits
+          let tmuxCreateCommand: string;
           if (command.includes('npm') || command.includes('yarn') || command.includes('pnpm') || 
               command.includes('dev') || command.includes('start') || command.includes('.sh')) {
-            // Keep the session alive after the dev server exits
-            sessionCommand = `bash -c "${tmuxCommand}; echo ''; echo '=========================================='; echo 'Process exited. Press Enter to close or run commands...'; exec bash"`;
+            // Use tmux's remain-on-exit option for dev servers
+            tmuxCreateCommand = `tmux new-session -d -s ${tmuxName} -c "${workingDir}" -x ${cols} -y ${rows} "set -o ignoreeof; ${tmuxCommand}; echo ''; echo '=========================================='; echo 'Process exited. Press Enter to close or run commands...'; bash"`;
+          } else {
+            tmuxCreateCommand = `tmux new-session -d -s ${tmuxName} -c "${workingDir}" -x ${cols} -y ${rows} "${tmuxCommand}"`;
           }
           
-          await execAsync(
-            `tmux new-session -d -s ${tmuxName} -c "${workingDir}" -x ${cols} -y ${rows} "${sessionCommand}"`
-          );
-          logger.info(`Created tmux session: ${tmuxName} with command: ${sessionCommand}`);
+          logger.info(`Executing tmux command: ${tmuxCreateCommand}`);
+          const { stdout, stderr } = await execAsync(tmuxCreateCommand, { timeout: 5000 });
+          if (stderr) {
+            logger.warn(`tmux stderr: ${stderr}`);
+          }
+          logger.info(`Created tmux session: ${tmuxName}`);
           
           // Attach to tmux session via PTY with -d flag to detach other clients
           logger.info(`Attaching to tmux session ${tmuxName} via PTY (detaching other clients)`);

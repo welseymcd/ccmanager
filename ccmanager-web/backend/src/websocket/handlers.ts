@@ -163,6 +163,7 @@ export function setupWebSocketHandlers(
       
       logger.info(`Creating session for user ${(socket.data as SocketData).userId} with workingDir: ${message.workingDir}`);
       try {
+        logger.info(`About to call manager.createSession...`);
         const sessionId = await manager.createSession({
           userId: (socket.data as SocketData).userId!,
           workingDir: message.workingDir,
@@ -178,6 +179,8 @@ export function setupWebSocketHandlers(
           }
         });
         
+        logger.info(`Session created successfully with ID: ${sessionId}`);
+        
         const created: ServerToClientMessage = {
           type: 'session_created',
           sessionId,
@@ -185,8 +188,10 @@ export function setupWebSocketHandlers(
           timestamp: Date.now(),
           requestId: message.id
         };
+        logger.info(`Emitting session_created response with requestId: ${message.id}`);
         socket.emit('session_created', created);
       } catch (error: any) {
+        logger.error(`Failed to create session: ${error.message}`, { stack: error.stack });
         const errorMessage: ServerToClientMessage = {
           type: 'session_error',
           sessionId: '',
