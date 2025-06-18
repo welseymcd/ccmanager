@@ -100,4 +100,4 @@ All components use Ink's React-like API:
 - `<Text>` for styled text output
 - `<SelectInput>` for menu navigation
 - `<TextInput>` for form inputs
-- Custom hooks like `useInput` for keyboard handling
+- Custom hooks like `useInput` for keyboard handlingRemove claude code info from commits
