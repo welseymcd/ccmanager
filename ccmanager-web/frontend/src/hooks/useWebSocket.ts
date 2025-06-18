@@ -68,6 +68,9 @@ export function useWebSocket(options: WebSocketClientOptions = {}) {
     return Promise.reject(new Error('WebSocket client not initialized'));
   }, []);
 
+  // Use a getter to always return the current client
+  const getClient = useCallback(() => clientRef.current, []);
+
   return {
     isConnected,
     lastMessage,
@@ -77,6 +80,7 @@ export function useWebSocket(options: WebSocketClientOptions = {}) {
     subscribeToSession,
     unsubscribeFromSession,
     waitForConnection,
-    client: clientRef.current
+    get client() { return clientRef.current; },
+    getClient
   };
 }

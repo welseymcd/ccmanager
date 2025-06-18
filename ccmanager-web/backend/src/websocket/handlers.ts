@@ -48,8 +48,10 @@ export function setupWebSocketHandlers(
 
   // Log when clients connect/disconnect
   io.on('connection', (socket: Socket) => {
-    logger.info(`WebSocket connection established: ${socket.id}`);
-    logger.info(`Total connected clients: ${io.sockets.sockets.size}`);
+    logger.info(`[WebSocket] New connection established: ${socket.id}`);
+    logger.info(`[WebSocket] Total connected clients: ${io.sockets.sockets.size}`);
+    logger.info(`[WebSocket] Socket authenticated: ${(socket.data as SocketData).authenticated}`);
+    logger.info(`[WebSocket] Socket userId: ${(socket.data as SocketData).userId || 'none'}`);
     
     // Send initial connection status
     const connectionMessage: ServerToClientMessage = {
@@ -58,6 +60,7 @@ export function setupWebSocketHandlers(
       timestamp: Date.now()
     };
     socket.emit('connection_status', connectionMessage);
+    logger.info(`[WebSocket] Sent connection_status message to ${socket.id}`);
 
     // Handle authentication
     socket.on('authenticate', async (message: ClientToServerMessage) => {
@@ -262,14 +265,23 @@ export function setupWebSocketHandlers(
 
     // Handle list sessions request
     socket.on('list_sessions', (message: ClientToServerMessage) => {
-      if (message.type !== 'list_sessions') return;
+      logger.info(`[WebSocket] Received list_sessions request from ${socket.id}`);
+      if (message.type !== 'list_sessions') {
+        logger.error(`[WebSocket] Invalid message type for list_sessions: ${message.type}`);
+        return;
+      }
       if (!(socket.data as SocketData).authenticated) {
+        logger.error(`[WebSocket] Socket ${socket.id} not authenticated for list_sessions`);
         socket.emit('error', { error: 'Not authenticated' });
         return;
       }
 
       try {
-        const sessions = manager.getUserSessions((socket.data as SocketData).userId!);
+        const userId = (socket.data as SocketData).userId!;
+        logger.info(`[WebSocket] Getting sessions for user: ${userId}`);
+        const sessions = manager.getUserSessions(userId);
+        logger.info(`[WebSocket] Found ${sessions.length} sessions for user ${userId}`);
+        
         const response: ServerToClientMessage = {
           type: 'sessions_list',
           sessions: sessions.map(s => ({
@@ -283,8 +295,10 @@ export function setupWebSocketHandlers(
           timestamp: Date.now(),
           requestId: message.id
         };
+        logger.info(`[WebSocket] Sending sessions_list response with requestId: ${message.id}`);
         socket.emit('sessions_list', response);
       } catch (error: any) {
+        logger.error(`[WebSocket] Error listing sessions: ${error.message}`);
         const errorMessage: ServerToClientMessage = {
           type: 'error',
           error: error.message,

@@ -40,8 +40,19 @@ export class WebSocketClient extends EventEmitter {
 
   connect(token?: string): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Check if already connected
       if (this.socket?.connected) {
+        console.log('[WebSocket] Already connected, resolving immediately');
+        this._isConnected = true;
         resolve();
+        return;
+      }
+      
+      // Check if connection is already in progress
+      if (this.socket && !this.socket.connected && this.socket.io && this.socket.io.readyState === 'opening') {
+        console.log('[WebSocket] Connection already in progress, waiting...');
+        this.socket.once('connect', () => resolve());
+        this.socket.once('connect_error', (error: any) => reject(error));
         return;
       }
 
@@ -49,43 +60,110 @@ export class WebSocketClient extends EventEmitter {
         this.authToken = token;
       }
 
+      // Disconnect any existing socket before creating new one
+      if (this.socket) {
+        console.log('[WebSocket] Disconnecting existing socket...');
+        this.socket.disconnect();
+        this.socket = null;
+        this.handlersSetup = false; // Reset handlers flag
+      }
+
+      console.log('[WebSocket] Creating new Socket.IO connection...');
+      console.log('[WebSocket] Auth token present:', !!this.authToken);
+      
       // Use relative URL for Socket.IO to work with proxy
       this.socket = io('/', {
         auth: { token: this.authToken },
         reconnection: true,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        reconnectionAttempts: this.options.maxReconnectAttempts || 10
+        reconnectionAttempts: this.options.maxReconnectAttempts || 10,
+        transports: ['websocket', 'polling'] // Try WebSocket first, then polling
       });
 
-      this.socket.on('connect', () => {
-        console.log('WebSocket connected');
+      console.log('[WebSocket] Socket.IO instance created');
+
+      // Set up message handlers immediately after creating socket
+      this.setupMessageHandlers();
+      
+      const handleConnect = () => {
+        console.log('[WebSocket] Socket connected successfully!');
+        console.log('[WebSocket] Socket ID:', this.socket!.id);
         this._isConnected = true;
         this.emit('connected');
         this.processQueuedMessages();
         resolve();
-      });
+      };
+      
+      this.socket.once('connect', handleConnect);
 
-      this.socket.on('connect_error', (error) => {
-        console.error('WebSocket connection error:', error);
+      this.socket.on('connect_error', (error: any) => {
+        console.error('[WebSocket] Connection error:', error.message);
+        console.error('[WebSocket] Error type:', error.type);
+        console.error('[WebSocket] Full error:', error);
         reject(error);
       });
 
-      this.socket.on('disconnect', () => {
-        console.log('WebSocket disconnected');
+      this.socket.on('disconnect', (reason) => {
+        console.log('[WebSocket] Disconnected. Reason:', reason);
         this._isConnected = false;
         this.emit('disconnected');
       });
 
-      // Set up message handlers
-      this.setupMessageHandlers();
+      // Log Socket.IO internal events for debugging
+      this.socket.io.on('error', (error) => {
+        console.error('[WebSocket] Socket.IO error:', error);
+      });
+
+      this.socket.io.on('reconnect_attempt', (attempt) => {
+        console.log('[WebSocket] Reconnection attempt:', attempt);
+      });
+
+      this.socket.io.on('reconnect', (attempt) => {
+        console.log('[WebSocket] Reconnected after', attempt, 'attempts');
+      });
+
+      this.socket.io.on('reconnect_error', (error) => {
+        console.error('[WebSocket] Reconnection error:', error);
+      });
+
+      this.socket.io.on('reconnect_failed', () => {
+        console.error('[WebSocket] Reconnection failed after all attempts');
+      });
+
+      // Message handlers are set up after socket creation
+
+      // Add a timeout to reject if connection takes too long
+      const connectTimeout = setTimeout(() => {
+        if (!this._isConnected) {
+          console.error('[WebSocket] Connection timeout after 10 seconds');
+          reject(new Error('WebSocket connection timeout'));
+        }
+      }, 10000);
+
+      // Clear timeout if connection succeeds or fails
+      const clearTimeoutHandler = () => {
+        clearTimeout(connectTimeout);
+      };
+      
+      this.socket.once('connect', clearTimeoutHandler);
+      this.socket.once('connect_error', clearTimeoutHandler);
     });
   }
 
   private setupMessageHandlers() {
-    if (!this.socket || this.handlersSetup) return;
+    if (!this.socket) {
+      console.error('[WebSocket] Cannot setup handlers - no socket');
+      return;
+    }
+    
+    if (this.handlersSetup) {
+      console.log('[WebSocket] Handlers already set up, skipping');
+      return;
+    }
     
     this.handlersSetup = true;
+    console.log('[WebSocket] Setting up message handlers...');
 
     // Handle all server messages
     const messageTypes: Array<ServerToClientMessage['type']> = [
@@ -103,7 +181,17 @@ export class WebSocketClient extends EventEmitter {
       'error'
     ];
 
+    console.log(`[WebSocket] Registering handlers for ${messageTypes.length} message types`);
+    
+    // Also register a catch-all handler to debug
+    this.socket!.onAny((eventName: string, data: any) => {
+      if (eventName === 'sessions_list' || eventName === 'session_created' || eventName === 'session_error') {
+        console.log(`[WebSocket] Received event: ${eventName}`, data);
+      }
+    });
+    
     messageTypes.forEach(type => {
+      console.log(`[WebSocket] Registering handler for: ${type}`);
       this.socket!.on(type, (message: ServerToClientMessage) => {
         // Debug log for terminal output
         if (type === 'terminal_output') {
@@ -112,13 +200,20 @@ export class WebSocketClient extends EventEmitter {
         
         // Debug log all messages
         console.log(`[WebSocket] Received message type: ${type}, requestId: ${message.requestId}`);
+        if (type === 'sessions_list' || type === 'session_created' || type === 'session_error') {
+          console.log(`[WebSocket] Full message:`, message);
+        }
         
-        // Handle request callbacks
-        if (message.requestId && this.requestCallbacks.has(message.requestId)) {
-          console.log(`[WebSocket] Found callback for requestId: ${message.requestId}`);
-          const callback = this.requestCallbacks.get(message.requestId)!;
+        // Handle request callbacks - check both requestId and id fields
+        const requestId = message.requestId || (message as any).id;
+        if (requestId && this.requestCallbacks.has(requestId)) {
+          console.log(`[WebSocket] Found callback for requestId: ${requestId}`);
+          const callback = this.requestCallbacks.get(requestId)!;
           callback(message);
-          this.requestCallbacks.delete(message.requestId);
+          this.requestCallbacks.delete(requestId);
+        } else if (requestId) {
+          console.log(`[WebSocket] No callback found for requestId: ${requestId}`);
+          console.log(`[WebSocket] Available callbacks: ${Array.from(this.requestCallbacks.keys()).join(', ')}`);
         }
 
         // Emit message event
@@ -143,7 +238,7 @@ export class WebSocketClient extends EventEmitter {
         }
 
         const requestId = this.generateRequestId();
-        const messageWithId = { ...message, id: requestId };
+        const messageWithId = { ...message, id: requestId, requestId }; // Include both for compatibility
 
         // Set up callback for response
         this.requestCallbacks.set(requestId, (response) => {
@@ -157,10 +252,11 @@ export class WebSocketClient extends EventEmitter {
         // Send message - Socket.IO expects event name and data separately
         // The message already has the type field, so we pass the entire message
         console.log(`[WebSocket] Sending message type: ${messageWithId.type}, with requestId: ${requestId}`);
+        console.log(`[WebSocket] Message content:`, messageWithId);
         this.socket.emit(messageWithId.type, messageWithId);
 
         // Timeout after 30 seconds
-        const timeoutId = setTimeout(() => {
+        setTimeout(() => {
           if (this.requestCallbacks.has(requestId)) {
             console.error(`[WebSocket] Request ${requestId} timed out for message type: ${messageWithId.type}`);
             this.requestCallbacks.delete(requestId);

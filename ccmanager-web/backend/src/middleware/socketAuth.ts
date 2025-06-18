@@ -23,21 +23,28 @@ export async function authenticateSocket(socket: Socket, next: (err?: any) => vo
   try {
     const token = socket.handshake.auth.token;
     
+    logger.info(`[SocketAuth] New socket connection attempt from ${socket.id}`);
+    logger.info(`[SocketAuth] Headers:`, socket.handshake.headers);
+    logger.info(`[SocketAuth] Origin:`, socket.handshake.headers.origin);
+    
     if (!token) {
       // Allow connection but mark as unauthenticated
       (socket.data as SocketData) = { authenticated: false };
-      logger.debug('No token provided in socket handshake');
+      logger.info('[SocketAuth] No token provided in socket handshake - allowing unauthenticated connection');
       return next();
     }
 
+    logger.info(`[SocketAuth] Token provided, attempting to verify...`);
+    
     // Verify token
     const userId = await verifyToken(token);
     (socket.data as SocketData) = { userId, authenticated: true };
-    logger.info(`Socket ${socket.id} authenticated as user ${userId}`);
+    logger.info(`[SocketAuth] Socket ${socket.id} authenticated successfully as user ${userId}`);
     next();
   } catch (error: any) {
-    logger.error(`Socket authentication failed: ${error.message}`);
-    logger.debug(`JWT Secret being used: ${getJwtSecret().substring(0, 10)}...`);
+    logger.error(`[SocketAuth] Socket authentication failed: ${error.message}`);
+    logger.debug(`[SocketAuth] JWT Secret being used: ${getJwtSecret().substring(0, 10)}...`);
+    logger.debug(`[SocketAuth] Full error:`, error);
     // Allow connection but mark as unauthenticated
     (socket.data as SocketData) = { authenticated: false };
     next();

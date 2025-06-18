@@ -22,7 +22,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
-  const [showDebugLog, setShowDebugLog] = useState(true);
+  const [showDebugLog, setShowDebugLog] = useState(false); // Start with debug log hidden
   const [sessionBuffer, setSessionBuffer] = useState<string | undefined>();
   const [availableSessions, setAvailableSessions] = useState<any[]>([]);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
@@ -31,6 +31,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
   const isCreatingSession = useRef(false);
   const hasInitialized = useRef(false);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
+  const mountId = useRef(Math.random().toString(36).substr(2, 9));
   const { sendMessage, client, isConnected, sendTerminalData } = useWebSocket();
   
   // Storage key for session persistence
@@ -46,20 +47,26 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
   // Create a unique tab ID for this project session
   const tabId = `${projectId}-${sessionType}`;
 
+  // Handle WebSocket connection and session creation
   useEffect(() => {
-    // Prevent duplicate initialization
-    if (hasInitialized.current) {
+    if (!projectId || !workingDir) return;
+    
+    addLog(`[${mountId.current}] Component effect running - sessionId: ${sessionId}, isCreating: ${isCreatingSession.current}`);
+    
+    // If we already have a session, don't do anything
+    if (sessionId) {
+      addLog(`[${mountId.current}] Already have session: ${sessionId}`);
       return;
     }
     
-    addLog(`Component mounted - WebSocket connected: ${isConnected}`);
-    addLog(`Project ID: ${projectId}, Session Type: ${sessionType}`);
-    addLog(`Working Directory: ${workingDir}`);
+    // If we're already creating a session, don't start another
+    if (isCreatingSession.current) {
+      addLog(`[${mountId.current}] Already creating session, skipping...`);
+      return;
+    }
     
     // Check auth token
     const authToken = localStorage.getItem('auth_token');
-    addLog(`Auth token present: ${!!authToken}`);
-    
     if (!authToken) {
       addLog('ERROR: No auth token found. User needs to log in.');
       setError('Not authenticated. Please log in again.');
@@ -68,36 +75,31 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
       return;
     }
     
-    if (isConnected) {
-      addLog('WebSocket is connected, creating session...');
-      hasInitialized.current = true;
-      createOrReconnectSession();
-    } else {
-      addLog('WebSocket not connected yet, waiting...');
-      addLog(`Client object exists: ${!!client}`);
-      
-      // Always get the WebSocket client instance
-      const wsClient = getWebSocketClient();
-      addLog(`WebSocket client instance obtained: ${!!wsClient}`);
-      addLog(`WebSocket client connected state: ${wsClient.isConnected()}`);
-      
-      if (!wsClient.isConnected()) {
-        addLog('Attempting to connect WebSocket with auth token...');
-        wsClient.connect(authToken).then(() => {
-          addLog('WebSocket connect() promise resolved successfully!');
-        }).catch((err: any) => {
-          addLog(`WebSocket connection failed: ${err.message || err}`);
-          if (err.stack) {
-            addLog(`Error stack: ${err.stack}`);
-          }
-        });
-      } else {
-        addLog('WebSocket already connected!');
-        hasInitialized.current = true;
-        createOrReconnectSession();
+    const initializeSession = async () => {
+      try {
+        const wsClient = getWebSocketClient();
+        
+        if (!wsClient.isConnected()) {
+          addLog('WebSocket not connected, connecting...');
+          await wsClient.connect(authToken);
+          addLog('WebSocket connected successfully');
+        }
+        
+        // Small delay to ensure connection is stable
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Now create or reconnect to session
+        await createOrReconnectSession();
+      } catch (error: any) {
+        addLog(`Failed to initialize: ${error.message}`);
+        setError(error.message || 'Failed to connect');
+        setStatus('error');
+        setIsLoading(false);
       }
-    }
-  }, [projectId, sessionType, isConnected]);
+    };
+    
+    initializeSession();
+  }, [projectId, workingDir, sessionType, sessionId]);
   
   // Reset initialization flag on unmount
   useEffect(() => {
@@ -206,11 +208,31 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
       // First, check server for any existing sessions for this project
       addLog('Checking server for existing sessions...');
       try {
-        const listResponse = await sendMessage({
-          type: 'list_sessions'
-        } as any);
+        // Ensure we're connected before sending
+        const wsClient = getWebSocketClient();
+        if (!wsClient.isConnected()) {
+          addLog('WebSocket not connected, waiting for connection...');
+          await wsClient.waitForConnection(5000);
+        }
         
-        if (listResponse.type === 'sessions_list' && listResponse.sessions.length > 0) {
+        addLog('Sending list_sessions request...');
+        
+        // Small delay to ensure handlers are ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        let listResponse;
+        try {
+          listResponse = await sendMessage({
+            type: 'list_sessions'
+          } as any);
+          
+          addLog(`Received response: ${JSON.stringify(listResponse)}`);
+        } catch (err: any) {
+          addLog(`Failed to list sessions: ${err.message}`);
+          // Continue to create a new session if listing fails
+        }
+        
+        if (listResponse && listResponse.type === 'sessions_list' && listResponse.sessions.length > 0) {
           // Filter sessions by working directory and command type
           const projectSessions = listResponse.sessions.filter((s: any) => {
             const isCorrectDir = s.workingDir === workingDir;
@@ -272,8 +294,9 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
         }
       }
       // Create new session via WebSocket
-      if (!client) {
-        addLog('ERROR: WebSocket client not available');
+      const wsClient = getWebSocketClient();
+      if (!wsClient || !wsClient.isConnected()) {
+        addLog('ERROR: WebSocket not connected');
         throw new Error('WebSocket not connected. Please refresh the page.');
       }
 
@@ -467,7 +490,8 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
     setError(null);
     
     try {
-      if (!client) {
+      const wsClient = getWebSocketClient();
+      if (!wsClient || !wsClient.isConnected()) {
         throw new Error('WebSocket not connected. Please refresh the page.');
       }
 
@@ -518,8 +542,8 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
 
   if (showSessionPicker && availableSessions.length > 0) {
     return (
-      <div className="h-full flex items-center justify-center bg-gray-900 p-4">
-        <div className="max-w-2xl w-full">
+      <div className="h-full bg-gray-900 p-4 overflow-hidden flex flex-col">
+        <div className="max-w-2xl w-full mx-auto flex flex-col h-full">
           <h3 className="text-lg font-semibold text-white mb-4">
             Terminal Sessions
           </h3>
@@ -528,8 +552,9 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
               ? 'You have 1 active session. You can create additional sessions or manage the existing one.'
               : `You have ${availableSessions.length} active sessions. Choose one to connect to or create a new one.`}
           </p>
-          <div className="space-y-3">
-            {availableSessions.map((session) => (
+          <div className="flex-1 overflow-y-auto custom-scrollbar" style={{ minHeight: 0, maxHeight: 'calc(100vh - 300px)' }}>
+            <div className="space-y-3 pr-2">
+              {availableSessions.map((session) => (
               <div
                 key={session.id}
                 className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-blue-500 transition-colors"
@@ -588,9 +613,10 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
                   </div>
                 </div>
               </div>
-            ))}
+              ))}
+            </div>
           </div>
-          <div className="mt-6 flex gap-3">
+          <div className="flex gap-3 mt-6">
             <button
               onClick={async () => {
                 setShowSessionPicker(false);
@@ -616,12 +642,27 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
     );
   }
 
-  if (isLoading && !sessionId) {
+  if (isLoading && !sessionId && !showSessionPicker) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-900">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
           <p className="text-gray-400">Initializing {sessionType} session...</p>
+          {showDebugLog && (
+            <div className="mt-4 max-w-2xl text-left bg-gray-800 p-4 rounded-lg">
+              <div className="text-xs font-mono text-gray-400 max-h-40 overflow-y-auto">
+                {debugLogs.map((log, i) => (
+                  <div key={i}>{log}</div>
+                ))}
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => setShowDebugLog(!showDebugLog)}
+            className="mt-4 text-xs text-gray-500 hover:text-gray-300"
+          >
+            {showDebugLog ? 'Hide' : 'Show'} Debug Logs
+          </button>
         </div>
       </div>
     );

@@ -34,18 +34,24 @@ const io = new SocketIOServer(httpServer, {
   cors: {
     origin: (origin, callback) => {
       // Same CORS logic as Express
+      console.log('[Socket.IO CORS] Origin:', origin);
       if (!origin) return callback(null, true);
       
       if (corsOrigins.includes(origin)) {
+        console.log('[Socket.IO CORS] Origin allowed by corsOrigins:', origin);
         callback(null, true);
       } else if (process.env.NODE_ENV === 'development' && origin.startsWith('http://') && origin.includes(':5173')) {
+        console.log('[Socket.IO CORS] Origin allowed for development:', origin);
         callback(null, true);
       } else {
+        console.log('[Socket.IO CORS] Origin blocked:', origin);
         callback(new Error('Not allowed by CORS'));
       }
     },
     credentials: true
-  }
+  },
+  path: '/socket.io/',
+  transports: ['websocket', 'polling']
 });
 
 const PORT = parseInt(process.env.PORT || '3001', 10);

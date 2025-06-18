@@ -2,86 +2,93 @@
 <html>
 <head>
     <title>WebSocket Test</title>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 </head>
 <body>
-    <h1>CCManager WebSocket Test</h1>
+    <h1>WebSocket Connection Test</h1>
     <div id="status">Connecting...</div>
-    <button onclick="createSession()">Create Test Session</button>
-    <pre id="log"></pre>
-
-    <script src="/socket.io/socket.io.js"></script>
+    <div id="logs" style="font-family: monospace; font-size: 12px; margin-top: 20px;">
+        <h3>Logs:</h3>
+    </div>
+    
     <script>
-        const log = document.getElementById('log');
+        const logs = document.getElementById('logs');
         const status = document.getElementById('status');
         
-        function addLog(msg) {
-            log.textContent += msg + '\n';
-            console.log(msg);
+        function log(message) {
+            const time = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.textContent = `[${time}] ${message}`;
+            logs.appendChild(div);
+            console.log(message);
         }
-
-        // Get auth token first
-        fetch('/api/auth/login', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username: 'admin', password: 'AdminPass123!'})
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.token) {
-                addLog('✓ Authenticated successfully');
-                connectWebSocket(data.token);
-            } else {
-                addLog('✗ Authentication failed: ' + JSON.stringify(data));
-            }
-        })
-        .catch(err => {
-            addLog('✗ Login error: ' + err.message);
+        
+        // Get auth token from localStorage
+        const token = localStorage.getItem('auth_token');
+        log(`Auth token present: ${!!token}`);
+        
+        // Try to connect to Socket.IO
+        log('Creating Socket.IO connection...');
+        const socket = io('http://localhost:3001', {
+            auth: { token: token },
+            transports: ['websocket', 'polling']
         });
-
-        function connectWebSocket(token) {
-            const socket = io('/', {
-                auth: { token }
-            });
-
-            socket.on('connect', () => {
-                status.textContent = '✓ Connected';
-                addLog('✓ WebSocket connected: ' + socket.id);
-            });
-
-            socket.on('disconnect', () => {
-                status.textContent = '✗ Disconnected';
-                addLog('✗ WebSocket disconnected');
-            });
-
-            socket.on('error', (error) => {
-                addLog('✗ WebSocket error: ' + error);
-            });
-
-            socket.on('session_created', (data) => {
-                addLog('✓ Session created: ' + JSON.stringify(data));
-            });
-
-            socket.on('session_error', (data) => {
-                addLog('✗ Session error: ' + JSON.stringify(data));
-            });
-
-            socket.on('terminal_output', (data) => {
-                addLog('Terminal output: ' + data.data);
-            });
-
-            window.socket = socket;
-        }
-
-        function createSession() {
-            if (window.socket && window.socket.connected) {
-                addLog('→ Sending create_session request...');
-                window.socket.emit('create_session', {
-                    workingDir: '/home/ross'
+        
+        socket.on('connect', () => {
+            log('Connected successfully!');
+            log(`Socket ID: ${socket.id}`);
+            status.textContent = 'Connected!';
+            status.style.color = 'green';
+        });
+        
+        socket.on('connect_error', (error) => {
+            log(`Connection error: ${error.message}`);
+            log(`Error type: ${error.type}`);
+            status.textContent = 'Connection failed!';
+            status.style.color = 'red';
+        });
+        
+        socket.on('disconnect', (reason) => {
+            log(`Disconnected: ${reason}`);
+            status.textContent = 'Disconnected!';
+            status.style.color = 'orange';
+        });
+        
+        socket.io.on('error', (error) => {
+            log(`Socket.IO error: ${error}`);
+        });
+        
+        socket.on('connection_status', (message) => {
+            log(`Received connection_status: ${JSON.stringify(message)}`);
+        });
+        
+        // Test creating a session after connection
+        socket.on('connect', () => {
+            setTimeout(() => {
+                log('Testing session creation...');
+                const requestId = `test_${Date.now()}`;
+                socket.emit('create_session', {
+                    type: 'create_session',
+                    id: requestId,
+                    workingDir: '/tmp',
+                    command: 'bash',
+                    cols: 80,
+                    rows: 24
                 });
-            } else {
-                addLog('✗ Not connected to WebSocket');
-            }
-        }
+                
+                socket.on('session_created', (response) => {
+                    if (response.requestId === requestId) {
+                        log(`Session created: ${response.sessionId}`);
+                    }
+                });
+                
+                socket.on('session_error', (response) => {
+                    if (response.requestId === requestId) {
+                        log(`Session error: ${response.error}`);
+                    }
+                });
+            }, 1000);
+        });
     </script>
 </body>
 </html>
