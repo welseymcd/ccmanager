@@ -2,102 +2,96 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## CCManager - Claude Code Worktree Manager
+## CCManager Web - Web Interface for Claude Code
 
-CCManager is a TUI application for managing multiple Claude Code sessions across Git worktrees. It allows you to run Claude Code in parallel across different worktrees, switch between them seamlessly, and manage worktrees directly from the interface.
+CCManager Web is a web-based interface for developing with Claude Code in a browser. It provides project management, terminal sessions, and file exploration capabilities through a modern React frontend and Node.js backend.
 
 ## Essential Commands
 
 ### Development
 ```bash
-npm run dev          # Run in development mode with auto-reload
-npm run build        # Build TypeScript to JavaScript
+npm run dev          # Run both backend and frontend in development mode
+npm run dev:backend  # Run backend only
+npm run dev:frontend # Run frontend only
+npm run build        # Build all packages (shared, backend, frontend)
+npm run test         # Run all tests
 npm run lint         # Run ESLint checks
 npm run typecheck    # Run TypeScript type checking
-npm test             # Run all tests with Vitest
-npm test -- --run    # Run tests once without watch mode
-npm test -- src/services/sessionManager.test.ts  # Run specific test file
 ```
 
-### Running the Application
+### Setup
 ```bash
-npm start            # Run the built application
-npx ccmanager        # Run directly via npx
-./ccmanager          # Run the built binary (after npm run build)
+npm install          # Install all dependencies for workspaces
+./setup-admin.sh     # Set up admin user (interactive)
 ```
 
 ## Architecture Overview
 
-### Core Architecture Pattern
-The application follows a React-based CLI architecture using Ink, with a clean separation between UI components and business logic services.
+### Monorepo Structure
+The application uses npm workspaces with three packages:
+- `backend/` - Node.js server with Express, WebSocket, and SQLite
+- `frontend/` - React SPA with Vite, TanStack Router, and Tailwind CSS
+- `shared/` - Shared TypeScript types and utilities
 
-**Key Flow:**
-1. `src/cli.tsx` validates TTY and renders the App component
-2. `src/components/App.tsx` manages global state and view routing
-3. Services handle business logic (sessions, worktrees, shortcuts)
-4. Components render UI based on current view and state
+### Backend Architecture
 
-### Service Layer
+**Core Services:**
+- **SessionManager** (`backend/src/services/sessionManager.ts`): Manages tmux sessions for Claude Code
+- **ProjectService** (`backend/src/services/projectService.ts`): Handles project CRUD operations
+- **AuthService** (`backend/src/services/auth.ts`): JWT-based authentication
+- **WebSocket Handlers** (`backend/src/websocket/handlers.ts`): Real-time terminal communication
 
-**SessionManager** (`src/services/sessionManager.ts`):
-- Manages Claude Code PTY sessions with sophisticated state detection
-- Events: `sessionCreated`, `sessionDestroyed`, `sessionStateChanged`, `sessionData`, `sessionExit`
-- States: `idle`, `busy`, `waiting_input` (detected via prompt patterns)
-- Maintains output buffers for session restoration
-- Background monitoring continues even for inactive sessions
+**Database Schema:**
+- Users with bcrypt-hashed passwords
+- Projects with descriptions and paths
+- API keys for authentication
+- Session history tracking
 
-**WorktreeService** (`src/services/worktreeService.ts`):
-- Wraps git worktree operations with error handling
-- Integrates branch management with worktree lifecycle
-- Handles main vs secondary worktree detection
+### Frontend Architecture
 
-**ShortcutManager** (`src/services/shortcutManager.ts`):
-- Platform-aware configuration paths
-- Reserved key protection (Ctrl+C, Ctrl+D, Escape)
-- Converts shortcuts to terminal control codes for raw input
+**Key Components:**
+- **ProjectDashboard**: Main view showing all projects
+- **ProjectPage**: Individual project view with terminal and file explorer
+- **TerminalView**: XTerm.js-based terminal emulator
+- **FileExplorer**: Tree-based file navigation
 
-### Prompt Detection System
+**State Management:**
+- Zustand stores for projects, sessions, tabs, and UI state
+- TanStack Query for server state
+- WebSocket connection for real-time updates
 
-The `promptDetector.ts` module handles Claude Code's output analysis:
-- Detects busy state via "ESC to interrupt" patterns
-- Identifies waiting prompts ("Do you want", "Would you like", etc.)
-- Tracks Claude's box-drawing UI elements (╭─╮, │, ╰─╯)
-- Handles bottom border detection for prompt box completion
+### Authentication Flow
+1. Login with username/password → JWT token
+2. Token stored in localStorage
+3. All API requests include Authorization header
+4. WebSocket authenticated via token in connection params
 
-### Key Design Patterns
+### Terminal Session Management
+- Uses tmux for persistent terminal sessions
+- Each project can have multiple terminal tabs
+- Sessions persist across browser refreshes
+- Real-time terminal data via WebSocket
 
-1. **View-Based Routing**: Simple state machine in App component manages navigation
-2. **Event-Driven Sessions**: Decouples session monitoring from UI updates
-3. **Raw PTY Passthrough**: Direct terminal control in session view
-4. **Buffered Output**: Sessions maintain output history for restoration
+## Development Guidelines
 
-### Testing Approach
+### Adding New Features
+1. Define types in `shared/types/`
+2. Implement backend logic in appropriate service
+3. Add API routes in `backend/src/routes/`
+4. Create frontend components in `frontend/src/components/`
+5. Update stores if needed in `frontend/src/stores/`
 
-- Uses Vitest for fast, modern testing
-- Mock dependencies (e.g., `vi.mock('./promptDetector')`)
-- Timer-based testing for async state transitions
-- Test files alongside source files (e.g., `sessionManager.test.ts`)
-
-## Important Considerations
+### Testing
+- Backend: Vitest with SQLite in-memory databases
+- Frontend: Vitest with React Testing Library
+- Run specific test: `npm test -- <filename>`
 
 ### Environment Variables
-- `CCMANAGER_CLAUDE_ARGS`: Additional arguments passed to Claude Code command
-- `CLAUDE_COMMAND`: Override the Claude command (useful for testing)
+Backend `.env`:
+```
+PORT=3001
+JWT_SECRET=your-secret-key
+NODE_ENV=development
+```
 
-### Platform Differences
-- Config location: `~/.config/ccmanager/` (Unix) vs `%APPDATA%/ccmanager/` (Windows)
-- PTY handling varies between platforms (node-pty abstracts this)
-
-### Session Management
-- Each worktree maintains its own Claude Code process
-- Sessions persist when switching views (background monitoring)
-- Output buffers limited to 10MB per session
-- Automatic cleanup on process exit
-
-### UI Components
-All components use Ink's React-like API:
-- `<Box>` for layout (flexDirection, padding, etc.)
-- `<Text>` for styled text output
-- `<SelectInput>` for menu navigation
-- `<TextInput>` for form inputs
-- Custom hooks like `useInput` for keyboard handlingRemove claude code info from commits
+Frontend uses Vite's env system with `VITE_` prefix.
