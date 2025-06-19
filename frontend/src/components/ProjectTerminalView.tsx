@@ -101,7 +101,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
     };
     
     initializeSession();
-  }, [projectId, workingDir, sessionType, sessionId]);
+  }, [projectId, workingDir, sessionType]); // Removed sessionId to prevent re-runs when session is created
   
   // Reset initialization flag on unmount
   useEffect(() => {
@@ -467,10 +467,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
         // Remove from localStorage
         localStorage.removeItem(sessionStorageKey);
         
-        // Optionally create a new session
-        setTimeout(() => {
-          createOrReconnectSession();
-        }, 1000);
+        // Don't automatically create a new session - let user do it manually
       } else {
         addLog(`Failed to close session: ${response.error || 'Unknown error'}`);
       }
@@ -481,6 +478,12 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
   };
 
   const createNewSession = async () => {
+    // Prevent multiple calls
+    if (isCreatingSession.current || isLoading) {
+      addLog('Session creation already in progress, skipping...');
+      return;
+    }
+    
     // Close any existing session first
     if (sessionId) {
       await closeSession();
@@ -488,6 +491,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
     
     setIsLoading(true);
     setError(null);
+    isCreatingSession.current = true;
     
     try {
       const wsClient = getWebSocketClient();
@@ -537,6 +541,8 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
       addLog(`Error creating new session: ${err.message || err}`);
       setError(err.message || 'Failed to create new session');
       setIsLoading(false);
+    } finally {
+      isCreatingSession.current = false;
     }
   };
 
@@ -672,10 +678,10 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
                         Manage Sessions
                       </button>
                       <button
-                        onClick={async () => {
+                        onClick={() => {
                           setShowActionsMenu(false);
                           // Create a new session without checking for existing ones
-                          await createNewSession();
+                          createNewSession();
                         }}
                         className="w-full px-4 py-2 text-sm text-left text-gray-300 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
                       >

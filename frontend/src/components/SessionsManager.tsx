@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Terminal, Clock, Activity, AlertCircle, Plus, Trash2, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { formatDistanceToNow } from 'date-fns';
@@ -30,7 +30,18 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [lastActionTime, setLastActionTime] = useState(0);
   const { sendMessage, isConnected } = useWebSocket();
+
+  // Debounce function to prevent rapid clicks
+  const debounce = useCallback((func: Function, delay: number) => {
+    const now = Date.now();
+    if (now - lastActionTime < delay) {
+      return;
+    }
+    setLastActionTime(now);
+    func();
+  }, [lastActionTime]);
 
   // Fetch sessions
   const fetchSessions = async () => {
@@ -79,8 +90,16 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
       } as any);
       
       if (response.type === 'session_created') {
-        // Refresh sessions list
-        await fetchSessions();
+        // Update sessions list by adding the new session locally instead of refetching
+        setSessions(prev => [...prev, {
+          id: response.sessionId,
+          workingDir,
+          command: 'claude',
+          createdAt: new Date().toISOString(),
+          lastActivity: new Date().toISOString(),
+          pid: 0, // Will be updated on next fetch
+          state: 'idle' as const
+        }]);
         // Auto-select the new session
         onSelectSession(response.sessionId);
       } else if (response.type === 'session_error') {
@@ -107,8 +126,8 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
         sessionId
       } as any);
       
-      // Refresh sessions list
-      await fetchSessions();
+      // Update sessions list by removing the deleted session locally
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
       
       // If we deleted the current session, clear selection
       if (sessionId === currentSessionId) {
@@ -182,7 +201,7 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
               <RefreshCw className="w-4 h-4" />
             </button>
             <button
-              onClick={createNewSession}
+              onClick={() => debounce(createNewSession, 1000)}
               disabled={isCreating}
               className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
             >
@@ -256,7 +275,7 @@ export const SessionsManager: React.FC<SessionsManagerProps> = ({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    deleteSession(session.id);
+                    debounce(() => deleteSession(session.id), 500);
                   }}
                   className="ml-2 p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
                   title="Close session"
