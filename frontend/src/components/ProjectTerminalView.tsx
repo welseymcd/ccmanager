@@ -840,18 +840,16 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
 
       {/* Terminal */}
       <div className="flex-1 min-h-0 bg-gray-900">
-        {sessionId && (
-          <TerminalView
-            ref={terminalRef}
-            sessionId={sessionId}
-            tabId={tabId}
-            status={status}
-            initialBuffer={sessionBuffer}
-            addLog={addLog}
-            showVirtualKeyboard={showVirtualKeyboard}
-            onVirtualKeyboardToggle={() => setShowVirtualKeyboard(!showVirtualKeyboard)}
-          />
-        )}
+        <TerminalView
+          ref={terminalRef}
+          sessionId={sessionId}
+          tabId={tabId}
+          status={status}
+          initialBuffer={sessionBuffer}
+          addLog={addLog}
+          showVirtualKeyboard={showVirtualKeyboard}
+          onVirtualKeyboardToggle={() => setShowVirtualKeyboard(!showVirtualKeyboard)}
+        />
       </div>
 
       {/* Sessions Manager Modal */}

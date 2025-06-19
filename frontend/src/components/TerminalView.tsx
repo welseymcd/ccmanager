@@ -95,7 +95,12 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
         addLog(`[TerminalView] Terminal init effect - sessionId: ${sessionId}, status: ${status}, hasContainer: ${!!terminalContainerRef.current}`);
       }
       
-      if (!terminalContainerRef.current || !sessionId || status !== 'connected') {
+      if (!terminalContainerRef.current || !sessionId) {
+        return;
+      }
+      
+      // Allow initialization for connecting and connected states
+      if (status !== 'connected' && status !== 'connecting') {
         return;
       }
       
@@ -204,88 +209,23 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
       // Force the terminal to be interactive
       terminal.focus();
       
-      // Add a direct keyboard event listener as a fallback
+      // Simplified fallback handler - only for when onData completely fails
       const handleDirectKeydown = (e: KeyboardEvent) => {
-        // Always log the keypress to debug panel
-        const keyInfo = `Key: ${e.key}${e.ctrlKey ? ' +Ctrl' : ''}${e.altKey ? ' +Alt' : ''}${e.metaKey ? ' +Meta' : ''}${e.shiftKey ? ' +Shift' : ''}`;
-        terminalAddMobileDebug(keyInfo);
-        
-        // Track when onData was last called
+        // Only use this handler if onData hasn't fired recently (indicating it's broken)
         const lastOnDataTime = (window as any).lastOnDataTime || 0;
         const timeSinceLastOnData = Date.now() - lastOnDataTime;
         
-        // Log timing info
-        if (timeSinceLastOnData > 1000) {
-          terminalAddMobileDebug(`onData last fired: ${Math.round(timeSinceLastOnData / 1000)}s ago`);
-        } else {
-          terminalAddMobileDebug(`onData last fired: ${timeSinceLastOnData}ms ago`);
+        // If onData is working (fired within last 5 seconds), don't interfere
+        if (timeSinceLastOnData < 5000) {
+          return;
         }
         
-        // Always handle input directly for now since onData isn't working
-        if (timeSinceLastOnData > 50) {
-          // Handle printable characters
-          if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-            terminalAddMobileDebug(`Sending char: "${e.key}"`);
-            e.preventDefault();
-            if (sessionId && client) {
-              client.sendTerminalData(sessionId, e.key);
-              // Also write to terminal to show the character
-              terminal.write(e.key);
-              terminalAddMobileDebug(`✓ Sent to backend`);
-            } else {
-              terminalAddMobileDebug(`✗ No session/client`);
-            }
+        // Emergency fallback only - don't write to terminal, only send to backend
+        if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+          e.preventDefault();
+          if (sessionId && client) {
+            client.sendTerminalData(sessionId, e.key);
           }
-          // Handle special keys
-          else if (sessionId && client) {
-            let handled = false;
-            let data = '';
-            let keyName = '';
-            
-            switch (e.key) {
-              case 'Enter':
-                data = '\r';
-                keyName = 'ENTER';
-                handled = true;
-                break;
-              case 'Backspace':
-                data = '\x7f';
-                keyName = 'BACKSPACE';
-                handled = true;
-                break;
-              case 'Tab':
-                data = '\t';
-                keyName = 'TAB';
-                handled = true;
-                break;
-              case 'Escape':
-                data = '\x1b';
-                keyName = 'ESC';
-                handled = true;
-                break;
-              // Arrow keys removed - let xterm handle them to prevent duplicate events
-            }
-            
-            // Handle Ctrl+C specially
-            if (e.ctrlKey && e.key.toLowerCase() === 'c') {
-              data = '\x03';
-              keyName = 'CTRL+C';
-              handled = true;
-            }
-            
-            if (handled) {
-              e.preventDefault();
-              terminalAddMobileDebug(`Sending special: ${keyName}`);
-              if (client) {
-                client.sendTerminalData(sessionId, data);
-                terminalAddMobileDebug(`✓ Sent ${keyName}`);
-              }
-            } else if (e.ctrlKey || e.altKey || e.metaKey) {
-              terminalAddMobileDebug(`Unhandled combo: ${keyInfo}`);
-            }
-          }
-        } else {
-          terminalAddMobileDebug(`onData should handle this`);
         }
       };
       
@@ -454,15 +394,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
         // Track when onData was called
         (window as any).lastOnDataTime = Date.now();
         
-        // Log onData with better formatting
-        if (data.length === 1 && data.charCodeAt(0) >= 32 && data.charCodeAt(0) < 127) {
-          terminalAddMobileDebug(`✅ onData fired: "${data}"`);
-        } else {
-          const hex = Array.from(data).map(c => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-          terminalAddMobileDebug(`✅ onData fired: ${hex}`);
-        }
-        
-        // Don't filter normal typing input - only filter problematic device responses
+        // Filter out device attribute responses to prevent loops
         const deviceAttributePatterns = [
           /^\x1b\[>0;276;0c$/,  // Secondary Device Attribute response
           /^\x1b\[\?1;2c$/,      // Primary Device Attribute response
@@ -470,76 +402,32 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
           /^\x1b\]11;rgb:[0-9a-f\/]+\x1b\\$/   // OSC 11 (background color)
         ];
         
-        // Check if this is a device attribute response
         const isDeviceAttribute = deviceAttributePatterns.some(pattern => pattern.test(data));
-        
         if (isDeviceAttribute) {
-          terminalAddMobileDebug(`Filtered device attribute`);
           return; // Don't send device attributes to prevent loops
         }
         
-        // Send ALL other input to the backend
-        if (sessionId) {
-          terminalAddMobileDebug(`Have sessionId: ${sessionId}, WS connected: ${client?.isConnected() || false}`);
+        // Send input to backend
+        if (sessionId && client) {
           try {
-            if (!client) {
-              terminalAddMobileDebug(`ERROR: WebSocket client not available!`);
-              throw new Error('WebSocket client not available');
-            }
-            // Actually send the data
-            terminalAddMobileDebug(`Calling sendTerminalData with: ${JSON.stringify(data)}`);
-            if (client) {
-              client.sendTerminalData(sessionId, data);
-            }
-            terminalAddMobileDebug(`✓ Successfully sent to backend`);
+            client.sendTerminalData(sessionId, data);
           } catch (error) {
-            terminalAddMobileDebug(`✗ Send error: ${error}`);
-            terminal.write('\r\n\x1b[31mSession disconnected. Please create a new session.\x1b[0m\r\n');
+            console.error('Terminal input error:', error);
+            terminal.write('\r\n\x1b[31mSession disconnected. Please reconnect.\x1b[0m\r\n');
           }
-        } else {
-          terminalAddMobileDebug(`ERROR: No sessionId available for input!`);
         }
       });
 
-      // Handle keyboard shortcuts - ONLY intercept special keys, let normal typing through
+      // Minimal custom key handler - only for critical shortcuts that xterm might not handle
       terminal.attachCustomKeyEventHandler((event) => {
         // Only handle keydown events
         if (event.type !== 'keydown') {
           return true;
         }
 
-        // Let normal typing characters pass through to xterm's default handler
-        // Only intercept special navigation keys
-        
-        // Handle Ctrl+C ONLY when actually pressed together
-        if (event.ctrlKey && event.key.toLowerCase() === 'c' && !event.altKey && !event.shiftKey) {
-          terminalAddMobileDebug(`Ctrl+C intercepted`);
-          event.preventDefault();
-          if (sessionId) {
-            sendTerminalData(sessionId, '\x03');
-          }
-          return false;
-        }
-
-        // Handle Escape key
-        if (event.key === 'Escape' && !event.ctrlKey && !event.altKey) {
-          terminalAddMobileDebug(`Escape intercepted`);
-          event.preventDefault();
-          if (sessionId) {
-            sendTerminalData(sessionId, '\x1b');
-          }
-          return false;
-        }
-
-        // Let arrow keys pass through to xterm's default handler - don't intercept them
-        if (event.key.startsWith('Arrow')) {
-          terminalAddMobileDebug(`Arrow key passed through: ${event.key}`);
-          return true; // Let xterm handle arrow keys
-        }
-
-        // Let all other keys (typing) pass through to xterm's default handler
-        terminalAddMobileDebug(`Key passed through: ${event.key}`);
-        return true;
+        // Let xterm.js handle all normal input through onData
+        // Only intercept if absolutely necessary
+        return true; // Let xterm handle everything normally
       });
 
       // Handle terminal resize
@@ -966,13 +854,10 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
             </div>
           </div>
         )}
-        {status !== 'connected' && (
+        {(status === 'disconnected' || status === 'error') && (
           <div className="flex items-center justify-center h-full text-white">
             <div className="text-center">
               <p className="text-lg mb-4">{getStatusMessage()}</p>
-              {status === 'connecting' && (
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div>
-              )}
               {status === 'disconnected' && (
                 <button
                   className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
@@ -992,9 +877,17 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
             </div>
           </div>
         )}
+        {status === 'connecting' && !sessionId && (
+          <div className="flex items-center justify-center h-full text-white">
+            <div className="text-center">
+              <p className="text-lg mb-4">Connecting to terminal session...</p>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div>
+            </div>
+          </div>
+        )}
         <div 
           ref={terminalContainerRef} 
-          className={`flex-1 overflow-hidden ${status !== 'connected' ? 'hidden' : 'block'}`}
+          className={`flex-1 overflow-hidden ${status === 'connected' || status === 'connecting' ? 'block' : 'hidden'}`}
           style={{ 
             padding: '4px',
             paddingTop: showVirtualKeyboard ? '160px' : '4px',
