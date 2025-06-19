@@ -35,6 +35,7 @@ interface SessionState {
   addTab: (tab: Omit<SessionTab, 'id'>) => string;
   removeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
+  clearActiveTab: () => void;
   updateTabConnection: (tabId: string, isConnected: boolean) => void;
   updateTabTitle: (tabId: string, title: string) => void;
   markTabAsRead: (tabId: string) => void;
@@ -105,6 +106,11 @@ export const useSessionStore = create<SessionState>()(
       setActiveTab: (tabId) => set((state) => ({
         tabs: state.tabs.map(t => ({ ...t, isActive: t.id === tabId })),
         activeTabId: tabId
+      })),
+      
+      clearActiveTab: () => set((state) => ({
+        tabs: state.tabs.map(t => ({ ...t, isActive: false })),
+        activeTabId: null
       })),
       
       updateTabConnection: (tabId, isConnected) => set((state) => ({

@@ -17,6 +17,7 @@ const ProjectPage: React.FC = () => {
     tabs, 
     activeTabId, 
     setActiveTab, 
+    clearActiveTab,
     createOrphanTab, 
     removeTab,
     activeProjectSessionType, 
@@ -48,8 +49,10 @@ const ProjectPage: React.FC = () => {
     if (tabId) {
       setActiveTab(tabId);
     } else {
-      // For backward compatibility with fixed tabs
+      // For fixed tabs, clear activeTab and set session type
       setActiveSessionType(tabType);
+      // Clear any active orphan tab to show the fixed tab
+      clearActiveTab();
     }
   };
 
@@ -63,7 +66,8 @@ const ProjectPage: React.FC = () => {
       if (remainingTabs.length > 0) {
         setActiveTab(remainingTabs[0].id);
       } else {
-        // Fall back to main session type
+        // Fall back to main session type and clear active tab
+        clearActiveTab();
         setActiveSessionType('main');
       }
     }
