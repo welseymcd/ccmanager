@@ -59,24 +59,19 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
   useEffect(() => {
     if (!projectId || !workingDir) return;
     
-    addLog(`[${mountId.current}] Component effect running - sessionId: ${sessionId}, isCreating: ${isCreatingSession.current}`);
-    
     // If we already have a session, don't do anything
     if (sessionId) {
-      addLog(`[${mountId.current}] Already have session: ${sessionId}`);
       return;
     }
     
     // If we're already creating a session, don't start another
     if (isCreatingSession.current) {
-      addLog(`[${mountId.current}] Already creating session, skipping...`);
       return;
     }
     
     // Check auth token
     const authToken = localStorage.getItem('auth_token');
     if (!authToken) {
-      addLog('ERROR: No auth token found. User needs to log in.');
       setError('Not authenticated. Please log in again.');
       setStatus('error');
       setIsLoading(false);
@@ -88,9 +83,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
         const wsClient = getWebSocketClient();
         
         if (!wsClient.isConnected()) {
-          addLog('WebSocket not connected, connecting...');
           await wsClient.connect(authToken);
-          addLog('WebSocket connected successfully');
         }
         
         // Small delay to ensure connection is stable
@@ -99,7 +92,6 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
         // Now create or reconnect to session
         await createOrReconnectSession();
       } catch (error: any) {
-        addLog(`Failed to initialize: ${error.message}`);
         setError(error.message || 'Failed to connect');
         setStatus('error');
         setIsLoading(false);
@@ -107,7 +99,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
     };
     
     initializeSession();
-  }, [projectId, workingDir, sessionType]); // Removed sessionId to prevent re-runs when session is created
+  }, [projectId, workingDir, sessionType]);
   
   // Reset initialization flag on unmount
   useEffect(() => {
@@ -116,16 +108,22 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
     };
   }, []);
 
-  // Listen for WebSocket connection state changes
+  // Listen for WebSocket connection state changes and handle disconnections
   useEffect(() => {
     const wsClient = getWebSocketClient();
     
     const handleConnected = () => {
-      addLog('WebSocket connected event received!');
+      if (status === 'error') {
+        setStatus('connecting');
+        setError(null);
+      }
     };
     
     const handleDisconnected = () => {
-      addLog('WebSocket disconnected event received!');
+      if (sessionId && status === 'connected') {
+        setStatus('disconnected');
+        setError('Connection lost. Use the actions menu to reconnect.');
+      }
     };
     
     wsClient.on('connected', handleConnected);
@@ -135,7 +133,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
       wsClient.off('connected', handleConnected);
       wsClient.off('disconnected', handleDisconnected);
     };
-  }, []);
+  }, [sessionId, status]);
 
   // Listen for session events
   useEffect(() => {
@@ -151,21 +149,22 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
     };
 
     const handleSessionClosed = (message: any) => {
-      addLog(`Received session_closed event: ${JSON.stringify(message)}`);
       if (message.sessionId === sessionId) {
         setStatus('disconnected');
-        addLog('Session status updated to disconnected');
+        setError('Session was closed. Use the actions menu to create a new session.');
         // Remove from localStorage when session closes
         localStorage.removeItem(sessionStorageKey);
+        // Clear session ID so user can create a new one
+        setSessionId(null);
+        setIsLoading(false);
       }
     };
 
     const handleSessionError = (message: any) => {
-      addLog(`Received session_error event: ${JSON.stringify(message)}`);
       if (message.sessionId === sessionId) {
         setStatus('error');
-        setError(message.error);
-        addLog(`Session error: ${message.error}`);
+        setError(message.error || 'Session error occurred');
+        setIsLoading(false);
       }
     };
 
@@ -329,7 +328,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
       } else if (sessionType === 'devserver') {
         sessionCommand = command || 'npm run dev';
       } else if (sessionType === 'orphan') {
-        sessionCommand = 'bash'; // Default shell for orphan terminals
+        sessionCommand = 'bash'; // Always use bash for orphan terminals
       } else {
         sessionCommand = 'bash'; // Fallback
       }
@@ -406,6 +405,8 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
 
   const handleReconnect = () => {
     setStatus('connecting');
+    setError(null);
+    setIsLoading(true);
     createOrReconnectSession();
   };
 
@@ -618,6 +619,42 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
     );
   }
 
+  // Handle disconnected state when no sessionId exists - provide clear options
+  if (!sessionId && (status === 'disconnected' || status === 'error')) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gray-900">
+        <div className="text-center max-w-md">
+          <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-white mb-2">
+            No Active Session
+          </h3>
+          <p className="text-gray-400 mb-4">
+            {status === 'error' ? 'Session error occurred.' : 'The session has been disconnected or closed.'}
+            {' '}Create a new session to continue.
+          </p>
+          <div className="flex gap-2 justify-center">
+            <button
+              onClick={() => {
+                setStatus('connecting');
+                setError(null);
+                createNewSession();
+              }}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              Create New Session
+            </button>
+            <button
+              onClick={() => setShowSessionsManager(true)}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              Browse Sessions
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col min-h-0 bg-white dark:bg-gray-900">
       {/* Header - matching Dev Server panel style */}
@@ -625,7 +662,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-4">
             <h3 className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
-              {sessionType === 'main' ? 'Claude' : 'Dev Server'}
+              {sessionType === 'main' ? 'Claude' : sessionType === 'devserver' ? 'Dev Server' : 'Terminal'}
             </h3>
             <div className="flex items-center gap-1 sm:gap-2">
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -690,22 +727,22 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
             {showActionsMenu && (
               <div className="absolute right-0 mt-1 w-48 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50">
                 <div className="py-1">
+                  <button
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      setShowSessionsManager(true);
+                    }}
+                    className="w-full px-4 py-2 text-sm text-left text-gray-300 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+                  >
+                    <List className="w-3.5 h-3.5" />
+                    Manage Sessions
+                  </button>
+                  
                   {status === 'connected' && (
                     <>
                       <button
                         onClick={() => {
                           setShowActionsMenu(false);
-                          setShowSessionsManager(true);
-                        }}
-                        className="w-full px-4 py-2 text-sm text-left text-gray-300 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-                      >
-                        <List className="w-3.5 h-3.5" />
-                        Manage Sessions
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowActionsMenu(false);
-                          // Create a new session without checking for existing ones
                           createNewSession();
                         }}
                         className="w-full px-4 py-2 text-sm text-left text-gray-300 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
@@ -723,9 +760,25 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
                         <X className="w-3.5 h-3.5" />
                         Close Session
                       </button>
-                      <div className="border-t border-gray-700 my-1"></div>
                     </>
                   )}
+                  
+                  {(status === 'disconnected' || status === 'error') && (
+                    <button
+                      onClick={() => {
+                        setShowActionsMenu(false);
+                        setStatus('connecting');
+                        setError(null);
+                        createNewSession();
+                      }}
+                      className="w-full px-4 py-2 text-sm text-left text-gray-300 hover:bg-gray-700 hover:text-green-400 transition-colors flex items-center gap-2"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Create New Session
+                    </button>
+                  )}
+                  
+                  <div className="border-t border-gray-700 my-1"></div>
                   <button
                     onClick={() => {
                       setShowActionsMenu(false);
