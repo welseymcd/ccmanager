@@ -263,26 +263,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
                 keyName = 'ESC';
                 handled = true;
                 break;
-              case 'ArrowUp':
-                data = '\x1b[A';
-                keyName = '↑';
-                handled = true;
-                break;
-              case 'ArrowDown':
-                data = '\x1b[B';
-                keyName = '↓';
-                handled = true;
-                break;
-              case 'ArrowRight':
-                data = '\x1b[C';
-                keyName = '→';
-                handled = true;
-                break;
-              case 'ArrowLeft':
-                data = '\x1b[D';
-                keyName = '←';
-                handled = true;
-                break;
+              // Arrow keys removed - let xterm handle them to prevent duplicate events
             }
             
             // Handle Ctrl+C specially
@@ -550,27 +531,10 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
           return false;
         }
 
-        // Handle Arrow keys ONLY
-        if (event.key.startsWith('Arrow') && !event.ctrlKey && !event.altKey) {
-          event.preventDefault();
-          terminalAddMobileDebug(`Arrow key: ${event.key}`);
-          if (sessionId) {
-            switch (event.key) {
-              case 'ArrowUp':
-                sendTerminalData(sessionId, '\x1b[A');
-                break;
-              case 'ArrowDown':
-                sendTerminalData(sessionId, '\x1b[B');
-                break;
-              case 'ArrowRight':
-                sendTerminalData(sessionId, '\x1b[C');
-                break;
-              case 'ArrowLeft':
-                sendTerminalData(sessionId, '\x1b[D');
-                break;
-            }
-          }
-          return false;
+        // Let arrow keys pass through to xterm's default handler - don't intercept them
+        if (event.key.startsWith('Arrow')) {
+          terminalAddMobileDebug(`Arrow key passed through: ${event.key}`);
+          return true; // Let xterm handle arrow keys
         }
 
         // Let all other keys (typing) pass through to xterm's default handler
@@ -731,14 +695,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
                       data = '\x1b';
                     } else if (e.key === 'Backspace') {
                       data = '\x7f';
-                    } else if (e.key === 'ArrowUp') {
-                      data = '\x1b[A';
-                    } else if (e.key === 'ArrowDown') {
-                      data = '\x1b[B';
-                    } else if (e.key === 'ArrowRight') {
-                      data = '\x1b[C';
-                    } else if (e.key === 'ArrowLeft') {
-                      data = '\x1b[D';
+                    // Arrow keys removed - let xterm handle them to prevent duplicate events
                     } else if (e.ctrlKey && e.key.length === 1) {
                       // Handle Ctrl+key combinations
                       const code = e.key.toUpperCase().charCodeAt(0) - 64;
@@ -938,12 +895,18 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
       addMobileDebug(`VKey data: ${JSON.stringify(data)}`);
 
       try {
-        // Write directly to terminal to see it
-        terminalRef.current.write(data);
+        // For arrow keys and control characters, don't write directly to terminal
+        // Let the backend response handle the display to avoid double input
+        const isNavigationKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key);
         
-        // Send to backend
+        if (!isNavigationKey) {
+          // Only write visible characters directly to terminal
+          terminalRef.current.write(data);
+        }
+        
+        // Always send to backend
         sendTerminalData(sessionId, data);
-        addMobileDebug(`VKey sent`);
+        addMobileDebug(`VKey sent: ${key}`);
         
         // Keep terminal focused
         terminalRef.current.focus();
