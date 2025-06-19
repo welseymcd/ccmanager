@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Terminal, Server, Menu, ArrowLeft } from 'lucide-react';
+import { Terminal, Server, Menu, ArrowLeft, Plus, X } from 'lucide-react';
 import { useParams, Link } from '@tanstack/react-router';
 import { useSessionStore } from '../stores/sessionStore';
 import { useUIStore } from '../stores/uiStore';
@@ -8,19 +8,66 @@ import { useProjects } from '../hooks/useProjects';
 import ProjectSidebar from './ProjectSidebar';
 import ProjectTerminalView from './ProjectTerminalView';
 import DevServerPanel from './DevServerPanel';
-import * as Tabs from '@radix-ui/react-tabs';
 
 const ProjectPage: React.FC = () => {
   const { projectId } = useParams({ from: '/_authenticated/projects/$projectId' });
   const { data: projects } = useProjects();
   const currentProject = projects?.find(p => p.id === projectId);
-  const { activeProjectSessionType, setActiveSessionType } = useSessionStore();
+  const { 
+    tabs, 
+    activeTabId, 
+    setActiveTab, 
+    createOrphanTab, 
+    removeTab,
+    activeProjectSessionType, 
+    setActiveSessionType 
+  } = useSessionStore();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
+  
+  // Get tabs for current project
+  const projectTabs = tabs.filter(tab => tab.projectId === projectId);
+  const activeTab = projectTabs.find(tab => tab.id === activeTabId);
+  
+  // Determine the active session type - for backward compatibility with fixed tabs
+  const currentActiveType = activeTab?.sessionType || activeProjectSessionType;
   const updateAccess = useUpdateProjectAccess();
   const [sidebarWidth, setSidebarWidth] = useState(300);
   const [isResizing, setIsResizing] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Handle tab creation and management
+  const handleCreateOrphanTab = () => {
+    if (currentProject) {
+      const tabId = createOrphanTab(currentProject.id);
+      setActiveTab(tabId);
+    }
+  };
+
+  const handleTabClick = (tabType: 'main' | 'devserver', tabId?: string) => {
+    if (tabId) {
+      setActiveTab(tabId);
+    } else {
+      // For backward compatibility with fixed tabs
+      setActiveSessionType(tabType);
+    }
+  };
+
+  const handleCloseOrphanTab = (tabId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    removeTab(tabId);
+    
+    // If we're closing the active tab, switch to another tab
+    if (tabId === activeTabId) {
+      const remainingTabs = projectTabs.filter(t => t.id !== tabId);
+      if (remainingTabs.length > 0) {
+        setActiveTab(remainingTabs[0].id);
+      } else {
+        // Fall back to main session type
+        setActiveSessionType('main');
+      }
+    }
+  };
 
   // Detect mobile screen size
   useEffect(() => {
@@ -136,24 +183,27 @@ const ProjectPage: React.FC = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <Tabs.Root
-          value={activeProjectSessionType}
-          onValueChange={(value) => setActiveSessionType(value as 'main' | 'devserver')}
-          className="flex-1 flex flex-col"
-        >
-          {/* Tabs */}
-          <Tabs.List className="flex bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex-1 flex flex-col">
+          {/* Custom Tab Bar */}
+          <div className="flex bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+            {/* Sidebar Toggle */}
             <button
               onClick={isMobile ? () => setMobileMenuOpen(!mobileMenuOpen) : toggleSidebar}
-              className="px-3 py-3 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              className="flex-shrink-0 px-3 py-3 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               title={isMobile ? "Toggle menu" : (sidebarCollapsed ? "Show sidebar" : "Hide sidebar")}
             >
               <Menu className="w-5 h-5" />
             </button>
             <div className="w-px h-8 bg-gray-200 dark:bg-gray-700 my-auto" />
-            <Tabs.Trigger
-              value="main"
-              className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-3 text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:text-blue-600 dark:data-[state=active]:text-blue-400 transition-colors"
+            
+            {/* Fixed Tabs */}
+            <button
+              onClick={() => handleTabClick('main')}
+              className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-3 text-xs md:text-sm font-medium transition-colors border-b-2 ${
+                currentActiveType === 'main' && !activeTab
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
             >
               <Terminal className="w-4 h-4" />
               <span className="hidden sm:inline">Claude Session</span>
@@ -161,11 +211,15 @@ const ProjectPage: React.FC = () => {
               {currentProject.hasActiveMainSession && (
                 <span className="w-2 h-2 bg-green-500 rounded-full" />
               )}
-            </Tabs.Trigger>
+            </button>
             
-            <Tabs.Trigger
-              value="devserver"
-              className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-3 text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:text-blue-600 dark:data-[state=active]:text-blue-400 transition-colors"
+            <button
+              onClick={() => handleTabClick('devserver')}
+              className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-3 text-xs md:text-sm font-medium transition-colors border-b-2 ${
+                currentActiveType === 'devserver' && !activeTab
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
             >
               <Server className="w-4 h-4" />
               <span className="hidden sm:inline">Dev Server</span>
@@ -173,27 +227,78 @@ const ProjectPage: React.FC = () => {
               {currentProject.hasActiveDevSession && (
                 <span className="w-2 h-2 bg-green-500 rounded-full" />
               )}
-            </Tabs.Trigger>
-          </Tabs.List>
+            </button>
 
-          {/* Tab Panels */}
-          <Tabs.Content value="main" className="flex-1 min-h-0">
-            <ProjectTerminalView
-              projectId={currentProject.id}
-              sessionType="main"
-              workingDir={currentProject.workingDir}
-            />
-          </Tabs.Content>
+            {/* Orphan Tabs */}
+            {projectTabs.filter(tab => tab.sessionType === 'orphan').map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-3 text-xs md:text-sm font-medium transition-colors border-b-2 group ${
+                  tab.id === activeTabId
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                <Terminal className="w-4 h-4" />
+                <span className="hidden sm:inline truncate max-w-32">{tab.title}</span>
+                <span className="sm:hidden truncate max-w-16">{tab.title}</span>
+                {tab.isConnected && (
+                  <span className="w-2 h-2 bg-green-500 rounded-full" />
+                )}
+                <button
+                  onClick={(e) => handleCloseOrphanTab(tab.id, e)}
+                  className="ml-1 p-0.5 opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-opacity"
+                  title="Close tab"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </button>
+            ))}
 
-          <Tabs.Content value="devserver" className="flex-1 min-h-0">
-            <DevServerPanel
-              projectId={currentProject.id}
-              command={currentProject.devServerCommand}
-              port={currentProject.devServerPort}
-              workingDir={currentProject.workingDir}
-            />
-          </Tabs.Content>
-        </Tabs.Root>
+            {/* Add Orphan Tab Button */}
+            <button
+              onClick={handleCreateOrphanTab}
+              className="flex-shrink-0 flex items-center gap-1 px-3 py-3 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              title="Add terminal tab"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden md:inline text-xs">Terminal</span>
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="flex-1 min-h-0">
+            {/* Main Tab */}
+            {currentActiveType === 'main' && !activeTab && (
+              <ProjectTerminalView
+                projectId={currentProject.id}
+                sessionType="main"
+                workingDir={currentProject.workingDir}
+              />
+            )}
+
+            {/* Dev Server Tab */}
+            {currentActiveType === 'devserver' && !activeTab && (
+              <DevServerPanel
+                projectId={currentProject.id}
+                command={currentProject.devServerCommand}
+                port={currentProject.devServerPort}
+                workingDir={currentProject.workingDir}
+              />
+            )}
+
+            {/* Orphan Tabs */}
+            {activeTab && activeTab.sessionType === 'orphan' && (
+              <ProjectTerminalView
+                projectId={currentProject.id}
+                sessionType="orphan"
+                workingDir={currentProject.workingDir}
+                orphanTabId={activeTab.id}
+              />
+            )}
+          </div>
+        </div>
       </div>
       </div>
     </div>

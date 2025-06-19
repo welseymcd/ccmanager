@@ -4,19 +4,22 @@ import { TerminalView } from './TerminalView';
 import { SessionsManager } from './SessionsManager';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { getWebSocketClient } from '../services/websocket';
+import { useSessionStore } from '../stores/sessionStore';
 
 interface ProjectTerminalViewProps {
   projectId: string;
-  sessionType: 'main' | 'devserver';
+  sessionType: 'main' | 'devserver' | 'orphan';
   workingDir: string;
   command?: string;
+  orphanTabId?: string;
 }
 
 const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({ 
   projectId, 
   sessionType, 
   workingDir,
-  command 
+  command,
+  orphanTabId
 }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,9 +38,12 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const mountId = useRef(Math.random().toString(36).substr(2, 9));
   const { sendMessage, client, isConnected, sendTerminalData } = useWebSocket();
+  const { updateTabConnection, setSessionStatus, updateTabSessionId } = useSessionStore();
   
-  // Storage key for session persistence
-  const sessionStorageKey = `ccmanager_session_${projectId}_${sessionType}`;
+  // Storage key for session persistence - include orphan tab ID for unique storage
+  const sessionStorageKey = orphanTabId 
+    ? `ccmanager_session_${projectId}_${sessionType}_${orphanTabId}`
+    : `ccmanager_session_${projectId}_${sessionType}`;
   
   // Helper to add debug logs
   const addLog = (message: string) => {
@@ -47,7 +53,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
   };
 
   // Create a unique tab ID for this project session
-  const tabId = `${projectId}-${sessionType}`;
+  const tabId = orphanTabId || `${projectId}-${sessionType}`;
 
   // Handle WebSocket connection and session creation
   useEffect(() => {
@@ -316,10 +322,22 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
         }
       }
       
+      // Determine the command based on session type
+      let sessionCommand: string;
+      if (sessionType === 'main') {
+        sessionCommand = 'claude';
+      } else if (sessionType === 'devserver') {
+        sessionCommand = command || 'npm run dev';
+      } else if (sessionType === 'orphan') {
+        sessionCommand = 'bash'; // Default shell for orphan terminals
+      } else {
+        sessionCommand = 'bash'; // Fallback
+      }
+
       const sessionConfig = {
         type: 'create_session',
         workingDir,
-        command: sessionType === 'main' ? 'claude' : (command || 'npm run dev'),
+        command: sessionCommand,
         cols,
         rows
       };
@@ -339,6 +357,13 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
           
           // Store session ID for reconnection
           localStorage.setItem(sessionStorageKey, wsResponse.sessionId);
+          
+          // Update session store for orphan tabs
+          if (sessionType === 'orphan' && orphanTabId) {
+            updateTabSessionId(orphanTabId, wsResponse.sessionId);
+            updateTabConnection(orphanTabId, true);
+            setSessionStatus(wsResponse.sessionId, 'connected');
+          }
         } else if (wsResponse.type === 'error' || wsResponse.type === 'session_error') {
           throw new Error(wsResponse.error || 'Failed to create session');
         } else {

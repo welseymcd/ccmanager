@@ -5,7 +5,7 @@ export interface SessionTab {
   id: string;
   sessionId: string;
   projectId: string;
-  sessionType: 'main' | 'devserver';
+  sessionType: 'main' | 'devserver' | 'orphan';
   title: string;
   isActive: boolean;
   isConnected: boolean;
@@ -42,6 +42,8 @@ interface SessionState {
   appendSessionOutput: (sessionId: string, line: TerminalLine) => void;
   setSessionStatus: (sessionId: string, status: 'connecting' | 'connected' | 'disconnected' | 'error') => void;
   setActiveSessionType: (type: 'main' | 'devserver') => void;
+  createOrphanTab: (projectId: string, title?: string) => string;
+  updateTabSessionId: (tabId: string, sessionId: string) => void;
   clearProjectSessions: (projectId: string) => void;
 }
 
@@ -154,6 +156,36 @@ export const useSessionStore = create<SessionState>()(
       })),
       
       setActiveSessionType: (type) => set({ activeProjectSessionType: type }),
+      
+      createOrphanTab: (projectId, title) => {
+        const tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const orphanTitle = title || `Terminal ${Date.now().toString().slice(-4)}`;
+        
+        const newTab: SessionTab = {
+          id: tabId,
+          sessionId: '', // Will be set when session is created
+          projectId,
+          sessionType: 'orphan',
+          title: orphanTitle,
+          isActive: false,
+          isConnected: false,
+          hasUnreadOutput: false
+        };
+        
+        set((state) => ({
+          tabs: [...state.tabs, newTab]
+        }));
+        
+        return tabId;
+      },
+      
+      updateTabSessionId: (tabId, sessionId) => set((state) => ({
+        tabs: state.tabs.map(tab =>
+          tab.id === tabId 
+            ? { ...tab, sessionId }
+            : tab
+        )
+      })),
       
       clearProjectSessions: (projectId) => set((state) => {
         const remainingTabs = state.tabs.filter(t => t.projectId !== projectId);
