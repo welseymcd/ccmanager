@@ -5,6 +5,7 @@ import { SessionsManager } from './SessionsManager';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { getWebSocketClient } from '../services/websocket';
 import { useSessionStore } from '../stores/sessionStore';
+import { useTabStore } from '../stores/tabStore';
 
 interface ProjectTerminalViewProps {
   projectId: string;
@@ -39,6 +40,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
   const mountId = useRef(Math.random().toString(36).substr(2, 9));
   const { sendMessage, client, isConnected, sendTerminalData } = useWebSocket();
   const { updateTabConnection, setSessionStatus, updateTabSessionId } = useSessionStore();
+  const { createTab } = useTabStore();
   
   // Storage key for session persistence - include orphan tab ID for unique storage
   const sessionStorageKey = orphanTabId 
@@ -99,7 +101,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
     };
     
     initializeSession();
-  }, [projectId, workingDir, sessionType]);
+  }, [projectId, workingDir, orphanTabId]); // Use orphanTabId instead of sessionType to prevent re-initialization on session type changes
   
   // Reset initialization flag on unmount
   useEffect(() => {
@@ -107,6 +109,16 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
       hasInitialized.current = false;
     };
   }, []);
+
+  // Clean up when sessionId changes (session swapping)
+  useEffect(() => {
+    return () => {
+      // Clean up previous session state when sessionId changes
+      if (isCreatingSession.current) {
+        isCreatingSession.current = false;
+      }
+    };
+  }, [sessionId]);
 
   // Listen for WebSocket connection state changes and handle disconnections
   useEffect(() => {
@@ -505,70 +517,30 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
 
   const createNewSession = async () => {
     // Prevent multiple calls
-    if (isCreatingSession.current || isLoading) {
+    if (isCreatingSession.current) {
       addLog('Session creation already in progress, skipping...');
       return;
     }
     
-    // Close any existing session first
-    if (sessionId) {
-      await closeSession();
-    }
-    
-    setIsLoading(true);
-    setError(null);
-    isCreatingSession.current = true;
+    addLog('Creating new terminal tab with new session...');
     
     try {
-      const wsClient = getWebSocketClient();
-      if (!wsClient || !wsClient.isConnected()) {
-        throw new Error('WebSocket not connected. Please refresh the page.');
-      }
-
-      // Get terminal dimensions
-      let cols = 80;
-      let rows = 24;
-      
-      if (terminalRef.current && typeof terminalRef.current.fit === 'function') {
-        const container = document.querySelector('.xterm-screen');
-        if (container) {
-          const cellWidth = 9;
-          const cellHeight = 17;
-          cols = Math.floor(container.clientWidth / cellWidth) || 80;
-          rows = Math.floor(container.clientHeight / cellHeight) || 24;
-        }
-      }
-      
-      const sessionConfig = {
-        type: 'create_session',
+      // Create a new tab instead of replacing the current session
+      const tabCreated = createTab({
+        title: sessionType === 'main' ? 'Claude' : 'Terminal',
         workingDir,
-        command: sessionType === 'main' ? 'claude' : (command || 'npm run dev'),
-        cols,
-        rows
-      };
+        command: sessionType === 'main' ? 'claude' : (command || 'bash'),
+        sessionType: 'orphan' // Mark as orphan tab so it gets its own session
+      });
       
-      addLog(`Creating new session: ${JSON.stringify(sessionConfig)}`);
-      
-      const wsResponse = await sendMessage(sessionConfig as any);
-      
-      if (wsResponse.type === 'session_created') {
-        setSessionId(wsResponse.sessionId);
-        setStatus('connected');
-        setIsLoading(false);
-        addLog(`New session created! ID: ${wsResponse.sessionId}`);
-        
-        // Store session ID for reconnection
-        const sessionStorageKey = `ccmanager_session_${projectId}_${sessionType}`;
-        localStorage.setItem(sessionStorageKey, wsResponse.sessionId);
-      } else if (wsResponse.type === 'error' || wsResponse.type === 'session_error') {
-        throw new Error(wsResponse.error || 'Failed to create session');
+      if (tabCreated) {
+        addLog('New terminal tab created successfully');
+      } else {
+        throw new Error('Failed to create new tab (maximum tabs reached)');
       }
     } catch (err: any) {
       addLog(`Error creating new session: ${err.message || err}`);
       setError(err.message || 'Failed to create new session');
-      setIsLoading(false);
-    } finally {
-      isCreatingSession.current = false;
     }
   };
 
@@ -839,7 +811,7 @@ const ProjectTerminalView: React.FC<ProjectTerminalViewProps> = ({
       )}
 
       {/* Terminal */}
-      <div className="flex-1 min-h-0 bg-gray-900">
+      <div className="flex-1 min-h-0 bg-gray-900" style={{ position: 'relative', overflow: 'hidden' }}>
         <TerminalView
           ref={terminalRef}
           sessionId={sessionId}

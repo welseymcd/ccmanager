@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Terminal, Server, Menu, ArrowLeft, Plus, X } from 'lucide-react';
 import { useParams, Link } from '@tanstack/react-router';
 import { useSessionStore } from '../stores/sessionStore';
+import { useTabStore } from '../stores/tabStore';
 import { useUIStore } from '../stores/uiStore';
 import { useUpdateProjectAccess } from '../hooks/useProjects';
 import { useProjects } from '../hooks/useProjects';
@@ -23,6 +24,7 @@ const ProjectPage: React.FC = () => {
     activeProjectSessionType, 
     setActiveSessionType 
   } = useSessionStore();
+  const { tabs: dynamicTabs, activeTabId: activeDynamicTabId, setActiveTab: setActiveDynamicTab } = useTabStore();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
   
   // Get tabs for current project
@@ -235,29 +237,74 @@ const ProjectPage: React.FC = () => {
 
             {/* Orphan Tabs */}
             {projectTabs.filter(tab => tab.sessionType === 'orphan').map((tab) => (
-              <button
+              <div
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-3 text-xs md:text-sm font-medium transition-colors border-b-2 group ${
+                className={`flex items-center gap-1 md:gap-2 text-xs md:text-sm font-medium transition-colors border-b-2 group ${
                   tab.id === activeTabId
                     ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
                     : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
               >
-                <Terminal className="w-4 h-4" />
-                <span className="hidden sm:inline truncate max-w-32">{tab.title}</span>
-                <span className="sm:hidden truncate max-w-16">{tab.title}</span>
-                {tab.isConnected && (
-                  <span className="w-2 h-2 bg-green-500 rounded-full" />
-                )}
+                <button
+                  onClick={() => setActiveTab(tab.id)}
+                  className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-3 flex-1"
+                >
+                  <Terminal className="w-4 h-4" />
+                  <span className="hidden sm:inline truncate max-w-32">{tab.title}</span>
+                  <span className="sm:hidden truncate max-w-16">{tab.title}</span>
+                  {tab.isConnected && (
+                    <span className="w-2 h-2 bg-green-500 rounded-full" />
+                  )}
+                </button>
                 <button
                   onClick={(e) => handleCloseOrphanTab(tab.id, e)}
-                  className="ml-1 p-0.5 opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-opacity"
+                  className="ml-1 p-0.5 px-2 py-3 opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-opacity"
                   title="Close tab"
                 >
                   <X className="w-3 h-3" />
                 </button>
-              </button>
+              </div>
+            ))}
+
+            {/* Dynamic Tabs from TabStore */}
+            {dynamicTabs.map((tab) => (
+              <div
+                key={tab.id}
+                className={`flex items-center gap-1 md:gap-2 text-xs md:text-sm font-medium transition-colors border-b-2 group ${
+                  tab.id === activeDynamicTabId
+                    ? 'border-green-500 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
+                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                <button
+                  onClick={() => setActiveDynamicTab(tab.id)}
+                  className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-3 flex-1"
+                >
+                  <Terminal className="w-4 h-4" />
+                  <span className="hidden sm:inline truncate max-w-32">{tab.title}</span>
+                  <span className="sm:hidden truncate max-w-16">{tab.title}</span>
+                  {tab.status === 'connected' && (
+                    <span className="w-2 h-2 bg-green-500 rounded-full" />
+                  )}
+                  {tab.status === 'connecting' && (
+                    <span className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
+                  )}
+                  {tab.status === 'error' && (
+                    <span className="w-2 h-2 bg-red-500 rounded-full" />
+                  )}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const { closeTab } = useTabStore.getState();
+                    closeTab(tab.id);
+                  }}
+                  className="ml-1 p-0.5 px-2 py-3 opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-opacity"
+                  title="Close tab"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
             ))}
 
             {/* Add Orphan Tab Button */}
@@ -273,33 +320,45 @@ const ProjectPage: React.FC = () => {
 
           {/* Tab Content */}
           <div className="flex-1 min-h-0">
-            {/* Main Tab */}
-            {currentActiveType === 'main' && !activeTab && (
-              <ProjectTerminalView
-                projectId={currentProject.id}
-                sessionType="main"
-                workingDir={currentProject.workingDir}
-              />
-            )}
-
-            {/* Dev Server Tab */}
-            {currentActiveType === 'devserver' && !activeTab && (
-              <DevServerPanel
-                projectId={currentProject.id}
-                command={currentProject.devServerCommand}
-                port={currentProject.devServerPort}
-                workingDir={currentProject.workingDir}
-              />
-            )}
-
-            {/* Orphan Tabs */}
-            {activeTab && activeTab.sessionType === 'orphan' && (
+            {/* Dynamic Tabs from TabStore - Check this first */}
+            {activeDynamicTabId && dynamicTabs.find(tab => tab.id === activeDynamicTabId) ? (
               <ProjectTerminalView
                 projectId={currentProject.id}
                 sessionType="orphan"
-                workingDir={currentProject.workingDir}
-                orphanTabId={activeTab.id}
+                workingDir={dynamicTabs.find(tab => tab.id === activeDynamicTabId)?.workingDir || currentProject.workingDir}
+                orphanTabId={activeDynamicTabId}
               />
+            ) : (
+              <>
+                {/* Main Tab */}
+                {currentActiveType === 'main' && !activeTab && (
+                  <ProjectTerminalView
+                    projectId={currentProject.id}
+                    sessionType="main"
+                    workingDir={currentProject.workingDir}
+                  />
+                )}
+
+                {/* Dev Server Tab */}
+                {currentActiveType === 'devserver' && !activeTab && (
+                  <DevServerPanel
+                    projectId={currentProject.id}
+                    command={currentProject.devServerCommand}
+                    port={currentProject.devServerPort}
+                    workingDir={currentProject.workingDir}
+                  />
+                )}
+
+                {/* Orphan Tabs */}
+                {activeTab && activeTab.sessionType === 'orphan' && (
+                  <ProjectTerminalView
+                    projectId={currentProject.id}
+                    sessionType="orphan"
+                    workingDir={currentProject.workingDir}
+                    orphanTabId={activeTab.id}
+                  />
+                )}
+              </>
             )}
           </div>
         </div>

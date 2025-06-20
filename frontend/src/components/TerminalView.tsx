@@ -41,6 +41,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
     const [, setIsInitialized] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
     const [mobileDebug, setMobileDebug] = useState<string[]>([]);
+    const [debugVisible, setDebugVisible] = useState(true);
 
     // Helper to add mobile debug messages
     const addMobileDebug = useCallback((msg: string) => {
@@ -82,10 +83,14 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
     // Write initial buffer when it becomes available
     useEffect(() => {
       if (initialBuffer && terminalRef.current && !terminalRef.current.element?.hasAttribute('data-buffer-written')) {
-        addMobileDebug(`Writing initial buffer to terminal: ${initialBuffer.length} bytes`);
-        terminalRef.current.write(initialBuffer);
-        // Mark that we've written the buffer to avoid duplicate writes
-        terminalRef.current.element?.setAttribute('data-buffer-written', 'true');
+        try {
+          addMobileDebug(`Writing initial buffer to terminal: ${initialBuffer.length} bytes`);
+          terminalRef.current.write(initialBuffer);
+          // Mark that we've written the buffer to avoid duplicate writes
+          terminalRef.current.element?.setAttribute('data-buffer-written', 'true');
+        } catch (e) {
+          console.error('Error writing initial buffer:', e);
+        }
       }
     }, [initialBuffer, addMobileDebug]);
 
@@ -104,22 +109,41 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
         return;
       }
       
-      // Prevent duplicate initialization
-      if (initializingRef.current || terminalRef.current) {
+      // Prevent duplicate initialization for the same session
+      if (initializingRef.current) {
         if (addLog) {
-          addLog(`[TerminalView] Terminal already initializing or initialized, skipping...`);
+          addLog(`[TerminalView] Terminal already initializing, skipping...`);
         }
         return;
       }
       
-      // Additional check to prevent multiple terminals for the same session
-      const existingTerminal = document.querySelector(`[data-session-id="${sessionId}"]`);
-      if (existingTerminal) {
-        if (addLog) {
-          addLog(`[TerminalView] Terminal element already exists for session ${sessionId}, skipping...`);
+      // If we already have a terminal for a different session, clean it up first
+      if (terminalRef.current) {
+        const currentSessionId = terminalRef.current.element?.getAttribute('data-session-id');
+        if (currentSessionId !== sessionId) {
+          if (addLog) {
+            addLog(`[TerminalView] Session changed from ${currentSessionId} to ${sessionId}, cleaning up old terminal...`);
+          }
+          // Clean up old terminal
+          try {
+            terminalRef.current.dispose();
+          } catch (e) {
+            console.error('Error disposing old terminal:', e);
+          }
+          terminalRef.current = null;
+          fitAddonRef.current = null;
+          searchAddonRef.current = null;
+          // Don't manipulate DOM directly - disposal should handle cleanup
+        } else {
+          if (addLog) {
+            addLog(`[TerminalView] Terminal already exists for this session, skipping...`);
+          }
+          return;
         }
-        return;
       }
+      
+      // Ensure container is clean before creating new terminal
+      // Don't manipulate DOM directly - let xterm handle it
       
       initializingRef.current = true;
 
@@ -130,11 +154,31 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
         addLog(`[TerminalView] Creating terminal instance - mobile: ${isMobile}, sessionId: ${sessionId}`);
       }
 
-      // Create terminal instance with mobile-friendly options
+      // Ensure container is ready and has dimensions
+      const containerReady = terminalContainerRef.current.offsetWidth > 0 && terminalContainerRef.current.offsetHeight > 0;
+      if (!containerReady) {
+        if (addLog) {
+          addLog(`[TerminalView] Container not ready, waiting...`);
+        }
+        // Wait for next frame and retry
+        requestAnimationFrame(() => {
+          if (!initializingRef.current || terminalRef.current) return;
+          // Retry initialization
+          initializingRef.current = false;
+        });
+        return;
+      }
+
+
+      // Create terminal instance with DOM renderer
       const terminal = new Terminal({
         cursorBlink: true,
         fontSize: isMobile ? 12 : 14,
         fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        // Use DOM renderer explicitly and ensure it's available
+        renderer: {
+          type: 'dom'
+        },
         theme: {
           background: '#1e1e1e',
           foreground: '#d4d4d4',
@@ -168,8 +212,6 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
         // Force specific dimensions initially
         cols: 80,
         rows: 24,
-        // Use canvas renderer for better compatibility
-        rendererType: 'canvas',
         // Enable cursor style
         cursorStyle: 'block',
         // Ensure proper focus behavior
@@ -193,7 +235,52 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
       searchAddonRef.current = searchAddon;
 
       // Open terminal in container
-      terminal.open(terminalContainerRef.current);
+      try {
+        terminal.open(terminalContainerRef.current);
+        
+        // Log terminal opening details
+        if (addLog) {
+          addLog(`[TerminalView] Terminal opened successfully`);
+          addLog(`[TerminalView] Terminal element exists: ${!!terminal.element}`);
+          addLog(`[TerminalView] Terminal textarea exists: ${!!terminal.textarea}`);
+          addLog(`[TerminalView] Container dimensions: ${terminalContainerRef.current.offsetWidth}x${terminalContainerRef.current.offsetHeight}`);
+        }
+        
+        // Verify the terminal DOM structure for DOM renderer
+        const xtermElement = terminalContainerRef.current.querySelector('.xterm');
+        const xtermScreen = terminalContainerRef.current.querySelector('.xterm-screen');
+        const xtermRows = terminalContainerRef.current.querySelector('.xterm-rows');
+        const xtermViewport = terminalContainerRef.current.querySelector('.xterm-viewport');
+        
+        if (addLog) {
+          addLog(`[TerminalView] DOM check - xterm element: ${!!xtermElement}`);
+          addLog(`[TerminalView] DOM check - xterm-screen: ${!!xtermScreen}`);
+          addLog(`[TerminalView] DOM check - xterm-rows: ${!!xtermRows}`);
+          addLog(`[TerminalView] DOM check - xterm-viewport: ${!!xtermViewport}`);
+        }
+        
+        // For DOM renderer, we expect xterm-rows instead of canvas
+        if (!xtermRows && !xtermViewport) {
+          if (addLog) {
+            addLog(`[TerminalView] WARNING: No xterm-rows or viewport found, DOM renderer may not be working properly`);
+          }
+        } else {
+          if (addLog) {
+            addLog(`[TerminalView] DOM renderer elements found - terminal should be rendering correctly`);
+          }
+        }
+        
+        // Force a refresh to ensure rendering
+        terminal.refresh(0, terminal.rows - 1);
+        
+        // Don't write test messages - they interfere with the actual terminal content
+        
+      } catch (openError) {
+        if (addLog) {
+          addLog(`[TerminalView] Error opening terminal: ${openError}`);
+        }
+        console.error('Failed to open terminal:', openError);
+      }
       
       // Mark terminal element with session ID to prevent duplicates
       if (terminal.element) {
@@ -485,14 +572,24 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
       if (initialBuffer && initialBuffer.length > 0) {
         terminalAddMobileDebug(`Initial buffer: ${initialBuffer.length} bytes`);
         try {
-          // Write the buffer without clearing first to preserve tmux state
-          terminal.write(initialBuffer);
-          terminalAddMobileDebug(`Initial buffer written`);
-          terminal.element?.setAttribute('data-buffer-written', 'true');
-          
-          // Refresh the terminal to ensure content is visible
-          terminal.refresh(0, terminal.rows - 1);
-          terminal.scrollToBottom();
+          // Small delay to ensure terminal is ready
+          setTimeout(() => {
+            if (terminalRef.current && terminal === terminalRef.current && !terminal.element?.hasAttribute('data-buffer-written')) {
+              try {
+                terminal.write(initialBuffer);
+                terminalAddMobileDebug(`Initial buffer written`);
+                terminal.element?.setAttribute('data-buffer-written', 'true');
+                
+                // Refresh the terminal to ensure content is visible
+                terminal.refresh(0, terminal.rows - 1);
+                terminal.scrollToBottom();
+              } catch (writeError) {
+                terminalAddMobileDebug(`Failed to write buffer: ${writeError}`);
+              }
+            } else {
+              terminalAddMobileDebug(`Terminal no longer current or buffer already written`);
+            }
+          }, 50);
         } catch (bufferError) {
           terminalAddMobileDebug(`Buffer write error: ${bufferError}`);
         }
@@ -645,7 +742,9 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
 
       // Set up resize observer
       const resizeObserver = new ResizeObserver(() => {
-        handleResize();
+        if (terminalRef.current) {
+          handleResize();
+        }
       });
       
       if (terminalContainerRef.current) {
@@ -659,6 +758,10 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
       
       // Cleanup
       return () => {
+        if (addLog) {
+          addLog(`[TerminalView] Cleaning up terminal for session: ${sessionId}`);
+        }
+        
         // Use the same client resolution logic for cleanup
         const cleanupClient = client || (window as any).__webSocketClient;
         if (cleanupClient) {
@@ -677,15 +780,34 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
           cleanupHandlersRef.current.textarea.removeEventListener('input', cleanupHandlersRef.current.handleInput);
         }
         
-        resizeObserver.disconnect();
-        terminal.dispose();
-        terminalRef.current = null;
-        fitAddonRef.current = null;
-        searchAddonRef.current = null;
+        // Clean up global handlers
+        if ((window as any).__terminalWindowHandler) {
+          window.removeEventListener('keydown', (window as any).__terminalWindowHandler, true);
+          delete (window as any).__terminalWindowHandler;
+        }
+        
+        try {
+          resizeObserver.disconnect();
+        } catch (e) {
+          console.error('Error disconnecting resize observer:', e);
+        }
+        
+        // Only dispose if this terminal instance owns the terminal ref
+        if (terminal && terminalRef.current === terminal) {
+          try {
+            terminal.dispose();
+          } catch (e) {
+            console.error('Error disposing terminal:', e);
+          }
+          terminalRef.current = null;
+          fitAddonRef.current = null;
+          searchAddonRef.current = null;
+        }
+        
         initializingRef.current = false;
         setIsInitialized(false);
       };
-    }, [sessionId, status, isMobile]); // Removed client, addLog, isConnected, initialBuffer to prevent loops
+    }, [sessionId]); // Only re-run when sessionId changes to prevent multiple initializations
 
     // Handle window resize
     useEffect(() => {
@@ -819,39 +941,65 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
     // Use the memoized addMobileDebug from above
 
     return (
-      <div className="h-full w-full bg-black relative flex flex-col overflow-hidden">
-        {/* Mobile Debug Panel - Compact corner version */}
+      <div className="h-full w-full bg-black relative flex flex-col" style={{ overflow: 'hidden', minHeight: '100px' }}>
+        {/* Debug Panel - Compact corner version with hide/show toggle */}
         {mobileDebug.length > 0 && (
-          <div className="absolute bottom-4 right-4 bg-gray-900 bg-opacity-95 p-2 z-40 text-xs text-gray-300 max-h-32 max-w-sm overflow-y-auto border border-gray-700 rounded shadow-lg">
-            <div className="flex justify-between items-center mb-1">
-              <div className="font-bold text-yellow-400 text-xs">Debug:</div>
-              <button 
-                onClick={() => setMobileDebug([])}
-                className="text-red-400 hover:text-red-300 text-xs px-1"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="space-y-0.5">
-              {mobileDebug.slice(-5).map((msg, i) => {
-                // Color code different message types
-                let className = "font-mono text-xs ";
-                if (msg.includes('[WebSocket]')) {
-                  className += "text-blue-300";
-                } else if (msg.includes('✓')) {
-                  className += "text-green-400";
-                } else if (msg.includes('✗')) {
-                  className += "text-red-400";
-                } else if (msg.includes('Output')) {
-                  className += "text-purple-400";
-                } else if (msg.includes('Sent')) {
-                  className += "text-yellow-400";
-                } else {
-                  className += "text-gray-400";
-                }
-                return <div key={i} className={className}>{msg}</div>;
-              })}
-            </div>
+          <div className="absolute bottom-4 right-4 bg-gray-900 bg-opacity-95 z-40 border border-gray-700 rounded shadow-lg">
+            {debugVisible ? (
+              // Full debug panel when visible
+              <div className="p-2 text-xs text-gray-300 max-h-32 max-w-sm overflow-y-auto">
+                <div className="flex justify-between items-center mb-1">
+                  <div className="font-bold text-yellow-400 text-xs">Debug:</div>
+                  <div className="flex gap-1">
+                    <button 
+                      onClick={() => setDebugVisible(false)}
+                      className="text-gray-400 hover:text-gray-300 text-xs px-1"
+                      title="Hide debug panel"
+                    >
+                      –
+                    </button>
+                    <button 
+                      onClick={() => setMobileDebug([])}
+                      className="text-red-400 hover:text-red-300 text-xs px-1"
+                      title="Clear debug messages"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-0.5">
+                  {mobileDebug.slice(-5).map((msg, i) => {
+                    // Color code different message types
+                    let className = "font-mono text-xs ";
+                    if (msg.includes('[WebSocket]')) {
+                      className += "text-blue-300";
+                    } else if (msg.includes('✓')) {
+                      className += "text-green-400";
+                    } else if (msg.includes('✗')) {
+                      className += "text-red-400";
+                    } else if (msg.includes('Output')) {
+                      className += "text-purple-400";
+                    } else if (msg.includes('Sent')) {
+                      className += "text-yellow-400";
+                    } else {
+                      className += "text-gray-400";
+                    }
+                    return <div key={i} className={className}>{msg}</div>;
+                  })}
+                </div>
+              </div>
+            ) : (
+              // Minimized debug indicator when hidden
+              <div className="p-1">
+                <button 
+                  onClick={() => setDebugVisible(true)}
+                  className="text-yellow-400 hover:text-yellow-300 text-xs px-2 py-1 rounded"
+                  title="Show debug panel"
+                >
+                  🐛 {mobileDebug.length}
+                </button>
+              </div>
+            )}
           </div>
         )}
         {(status === 'disconnected' || status === 'error') && (
@@ -887,7 +1035,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
         )}
         <div 
           ref={terminalContainerRef} 
-          className={`flex-1 overflow-hidden ${status === 'connected' || status === 'connecting' ? 'block' : 'hidden'}`}
+          className="flex-1"
           style={{ 
             padding: '4px',
             paddingTop: showVirtualKeyboard ? '160px' : '4px',
@@ -896,10 +1044,21 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
             minWidth: isMobile ? '100%' : '400px',
             pointerEvents: 'auto',
             position: 'relative',
-            backgroundColor: '#000000'
+            backgroundColor: '#000000',
+            // Ensure the container can receive the xterm canvas
+            display: status === 'connected' || status === 'connecting' ? 'block' : 'none',
+            // Force visibility
+            visibility: 'visible',
+            opacity: 1
           }}
-          onClick={(e) => {
-            addMobileDebug(`Terminal clicked`);
+          onClick={() => {
+            if (addLog) {
+              addLog(`[TerminalView] Terminal clicked, status: ${status}, has term ref: ${!!terminalRef.current}`);
+            }
+            if (!terminalRef.current) {
+              addMobileDebug(`Terminal ref not available`);
+              return;
+            }
             if (terminalRef.current) {
               terminalRef.current.focus();
               // Also try to focus the textarea directly
@@ -940,7 +1099,23 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
             }
           }}
           tabIndex={0}
-        />
+        >
+          {/* Fallback content if terminal doesn't render */}
+          {status === 'connected' && !terminalRef.current && (
+            <div style={{ 
+              color: 'white', 
+              padding: '20px', 
+              fontFamily: 'monospace',
+              fontSize: '14px',
+              backgroundColor: 'black'
+            }}>
+              <div style={{ color: '#00ff00' }}>Terminal container is ready but xterm not initialized.</div>
+              <div style={{ color: '#ffff00' }}>Session ID: {sessionId}</div>
+              <div style={{ color: '#00ffff' }}>Status: {status}</div>
+              <div style={{ color: '#ff00ff' }}>Please check browser console for errors.</div>
+            </div>
+          )}
+        </div>
         
         {/* Remove floating keyboard button since we have it in the header */}
         
