@@ -21,6 +21,7 @@ export interface TabState {
   setActiveTab: (tabId: string) => void;
   updateTab: (tabId: string, updates: Partial<Tab>) => void;
   clearTabs: () => void;
+  deduplicateTabs: () => void;
   getPersistedState: () => { tabs: Tab[]; activeTabId: string | null };
   restoreFromPersistedState: (state: { tabs: Tab[]; activeTabId: string | null }) => void;
 }
@@ -108,6 +109,39 @@ export const useTabStore = create<TabState>()(
 
       clearTabs: () => {
         set({ tabs: [], activeTabId: null });
+      },
+
+      deduplicateTabs: () => {
+        set((state) => {
+          const seen = new Map<string, Tab>();
+          const deduplicatedTabs: Tab[] = [];
+          
+          // Keep tabs based on unique combination of workingDir + title
+          // Prefer tabs with sessionId over those without
+          state.tabs.forEach(tab => {
+            const key = `${tab.workingDir}:${tab.title}`;
+            const existing = seen.get(key);
+            
+            if (!existing || (tab.sessionId && !existing.sessionId)) {
+              seen.set(key, tab);
+            }
+          });
+          
+          // Convert back to array maintaining original order
+          state.tabs.forEach(tab => {
+            const key = `${tab.workingDir}:${tab.title}`;
+            if (seen.get(key) === tab) {
+              deduplicatedTabs.push(tab);
+            }
+          });
+          
+          return {
+            tabs: deduplicatedTabs,
+            activeTabId: deduplicatedTabs.find(t => t.id === state.activeTabId) 
+              ? state.activeTabId 
+              : (deduplicatedTabs.length > 0 ? deduplicatedTabs[0].id : null)
+          };
+        });
       },
 
       getPersistedState: () => {

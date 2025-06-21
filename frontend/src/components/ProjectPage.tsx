@@ -6,6 +6,7 @@ import { useTabStore } from '../stores/tabStore';
 import { useUIStore } from '../stores/uiStore';
 import { useUpdateProjectAccess } from '../hooks/useProjects';
 import { useProjects } from '../hooks/useProjects';
+import { useWebSocket } from '../hooks/useWebSocket';
 import ProjectSidebar from './ProjectSidebar';
 import ProjectTerminalView from './ProjectTerminalView';
 import DevServerPanel from './DevServerPanel';
@@ -19,45 +20,23 @@ const ProjectPage: React.FC = () => {
     activeTabId, 
     setActiveTab, 
     clearActiveTab,
-    createOrphanTab, 
-    removeTab,
-    activeProjectSessionType, 
-    setActiveSessionType 
+    removeTab
   } = useSessionStore();
-  const { tabs: dynamicTabs, activeTabId: activeDynamicTabId, setActiveTab: setActiveDynamicTab } = useTabStore();
+  const { tabs: dynamicTabs, activeTabId: activeDynamicTabId, setActiveTab: setActiveDynamicTab, createTab, deduplicateTabs } = useTabStore();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
+  const { sendMessage, isConnected } = useWebSocket();
   
   // Get tabs for current project
   const projectTabs = tabs.filter(tab => tab.projectId === projectId);
   const activeTab = projectTabs.find(tab => tab.id === activeTabId);
   
-  // Determine the active session type - for backward compatibility with fixed tabs
-  const currentActiveType = activeTab?.sessionType || activeProjectSessionType;
   const updateAccess = useUpdateProjectAccess();
   const [sidebarWidth, setSidebarWidth] = useState(300);
   const [isResizing, setIsResizing] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Handle tab creation and management
-  const handleCreateOrphanTab = () => {
-    if (currentProject) {
-      const tabId = createOrphanTab(currentProject.id);
-      setActiveTab(tabId);
-    }
-  };
-
-  const handleTabClick = (tabType: 'main' | 'devserver', tabId?: string) => {
-    if (tabId) {
-      setActiveTab(tabId);
-    } else {
-      // For fixed tabs, clear activeTab and set session type
-      setActiveSessionType(tabType);
-      // Clear any active orphan tab to show the fixed tab
-      clearActiveTab();
-    }
-  };
-
+  // Handle legacy orphan tab closing
   const handleCloseOrphanTab = (tabId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     removeTab(tabId);
@@ -68,9 +47,11 @@ const ProjectPage: React.FC = () => {
       if (remainingTabs.length > 0) {
         setActiveTab(remainingTabs[0].id);
       } else {
-        // Fall back to main session type and clear active tab
+        // Switch to first dynamic tab if available
+        if (dynamicTabs.length > 0) {
+          setActiveDynamicTab(dynamicTabs[0].id);
+        }
         clearActiveTab();
-        setActiveSessionType('main');
       }
     }
   };
@@ -88,11 +69,96 @@ const ProjectPage: React.FC = () => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Sync existing sessions as tabs
+  const syncExistingSessions = async () => {
+    if (!isConnected || !currentProject) return;
+    
+    try {
+      const response = await sendMessage({ type: 'list_sessions' } as any);
+      
+      if (response.type === 'sessions_list') {
+        // Filter sessions for this project
+        const projectSessions = response.sessions.filter((s: any) => 
+          s.workingDir === currentProject.workingDir
+        );
+        
+        // Group sessions by type
+        let hasClaudeSession = false;
+        let hasDevServerSession = false;
+        const orphanSessions: any[] = [];
+        
+        projectSessions.forEach((session: any) => {
+          if (session.command === 'claude' || session.command.includes('--dangerously-skip-permissions')) {
+            hasClaudeSession = true;
+          } else if (session.command.includes('npm run dev') || session.command === currentProject.devServerCommand) {
+            hasDevServerSession = true;
+          } else {
+            orphanSessions.push(session);
+          }
+        });
+        
+        // Only create Claude tab if there's no existing Claude tab AND no Claude session
+        const claudeTab = dynamicTabs.find(tab => 
+          tab.workingDir === currentProject.workingDir && 
+          tab.title === 'Claude Session'
+        );
+        if (!claudeTab && !hasClaudeSession) {
+          createTab({
+            workingDir: currentProject.workingDir,
+            title: 'Claude Session'
+          });
+        }
+        
+        // Only create Dev Server tab if there's no existing Dev Server tab AND no Dev Server session
+        const devServerTab = dynamicTabs.find(tab => 
+          tab.workingDir === currentProject.workingDir && 
+          tab.title === 'Dev Server'
+        );
+        if (!devServerTab && !hasDevServerSession && currentProject.devServerCommand) {
+          createTab({
+            workingDir: currentProject.workingDir,
+            title: 'Dev Server'
+          });
+        }
+        
+        // Create tabs for orphan sessions that don't have tabs yet
+        orphanSessions.forEach((session: any) => {
+          const existingTab = dynamicTabs.find(tab => 
+            tab.sessionId === session.id || 
+            (tab.workingDir === session.workingDir && tab.title === 'Terminal')
+          );
+          
+          if (!existingTab) {
+            createTab({
+              workingDir: session.workingDir,
+              title: 'Terminal'
+            });
+          }
+        });
+        
+        // After syncing, deduplicate tabs to remove any duplicates
+        deduplicateTabs();
+      }
+    } catch (err) {
+      console.error('Failed to sync sessions:', err);
+    }
+  };
+
   useEffect(() => {
     if (currentProject) {
       updateAccess.mutate(currentProject.id);
+      
+      // Sync existing sessions from server - this will handle tab creation intelligently
+      syncExistingSessions();
+      
+      // If no tab is active after sync, activate the first one
+      setTimeout(() => {
+        if (!activeDynamicTabId && dynamicTabs.length > 0) {
+          setActiveDynamicTab(dynamicTabs[0].id);
+        }
+      }, 100);
     }
-  }, [currentProject?.id]);
+  }, [currentProject?.id, isConnected]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -202,40 +268,8 @@ const ProjectPage: React.FC = () => {
             </button>
             <div className="w-px h-8 bg-gray-200 dark:bg-gray-700 my-auto" />
             
-            {/* Fixed Tabs */}
-            <button
-              onClick={() => handleTabClick('main')}
-              className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-3 text-xs md:text-sm font-medium transition-colors border-b-2 ${
-                currentActiveType === 'main' && !activeTab
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
-              }`}
-            >
-              <Terminal className="w-4 h-4" />
-              <span className="hidden sm:inline">Claude Session</span>
-              <span className="sm:hidden">Claude</span>
-              {currentProject.hasActiveMainSession && (
-                <span className="w-2 h-2 bg-green-500 rounded-full" />
-              )}
-            </button>
-            
-            <button
-              onClick={() => handleTabClick('devserver')}
-              className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-3 text-xs md:text-sm font-medium transition-colors border-b-2 ${
-                currentActiveType === 'devserver' && !activeTab
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
-              }`}
-            >
-              <Server className="w-4 h-4" />
-              <span className="hidden sm:inline">Dev Server</span>
-              <span className="sm:hidden">Dev</span>
-              {currentProject.hasActiveDevSession && (
-                <span className="w-2 h-2 bg-green-500 rounded-full" />
-              )}
-            </button>
 
-            {/* Orphan Tabs */}
+            {/* Legacy Orphan Tabs - will be phased out */}
             {projectTabs.filter(tab => tab.sessionType === 'orphan').map((tab) => (
               <div
                 key={tab.id}
@@ -280,7 +314,7 @@ const ProjectPage: React.FC = () => {
                   onClick={() => setActiveDynamicTab(tab.id)}
                   className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-3 flex-1"
                 >
-                  <Terminal className="w-4 h-4" />
+                  {tab.title === 'Dev Server' ? <Server className="w-4 h-4" /> : <Terminal className="w-4 h-4" />}
                   <span className="hidden sm:inline truncate max-w-32">{tab.title}</span>
                   <span className="sm:hidden truncate max-w-16">{tab.title}</span>
                   {tab.status === 'connected' && (
@@ -307,58 +341,88 @@ const ProjectPage: React.FC = () => {
               </div>
             ))}
 
-            {/* Add Orphan Tab Button */}
+            {/* Add New Tab Button */}
             <button
-              onClick={handleCreateOrphanTab}
+              onClick={() => {
+                createTab({
+                  workingDir: currentProject.workingDir,
+                  title: 'Terminal'
+                });
+              }}
               className="flex-shrink-0 flex items-center gap-1 px-3 py-3 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               title="Add terminal tab"
             >
               <Plus className="w-4 h-4" />
-              <span className="hidden md:inline text-xs">Terminal</span>
+              <span className="hidden md:inline text-xs">New Tab</span>
             </button>
+            
+            {/* Show cleanup button only if there are duplicate tabs */}
+            {dynamicTabs.length > new Set(dynamicTabs.map(t => `${t.workingDir}:${t.title}`)).size && (
+              <>
+                <div className="w-px h-8 bg-gray-200 dark:bg-gray-700 my-auto" />
+                <button
+                  onClick={() => {
+                    deduplicateTabs();
+                  }}
+                  className="flex-shrink-0 flex items-center gap-1 px-3 py-3 text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
+                  title="Remove duplicate tabs"
+                >
+                  <X className="w-4 h-4" />
+                  <span className="hidden md:inline text-xs">Clean Duplicates</span>
+                </button>
+              </>
+            )}
           </div>
 
           {/* Tab Content */}
           <div className="flex-1 min-h-0">
-            {/* Dynamic Tabs from TabStore - Check this first */}
-            {activeDynamicTabId && dynamicTabs.find(tab => tab.id === activeDynamicTabId) ? (
-              <ProjectTerminalView
-                projectId={currentProject.id}
-                sessionType="orphan"
-                workingDir={dynamicTabs.find(tab => tab.id === activeDynamicTabId)?.workingDir || currentProject.workingDir}
-                orphanTabId={activeDynamicTabId}
-              />
-            ) : (
-              <>
-                {/* Main Tab */}
-                {currentActiveType === 'main' && !activeTab && (
+            {activeDynamicTabId && dynamicTabs.find(tab => tab.id === activeDynamicTabId) && (() => {
+              const activeTab = dynamicTabs.find(tab => tab.id === activeDynamicTabId)!;
+              
+              // Determine session type based on tab title
+              if (activeTab.title === 'Claude Session') {
+                return (
                   <ProjectTerminalView
+                    key={activeTab.id}
                     projectId={currentProject.id}
                     sessionType="main"
-                    workingDir={currentProject.workingDir}
+                    workingDir={activeTab.workingDir}
+                    orphanTabId={activeTab.id}
                   />
-                )}
-
-                {/* Dev Server Tab */}
-                {currentActiveType === 'devserver' && !activeTab && (
+                );
+              } else if (activeTab.title === 'Dev Server') {
+                return (
                   <DevServerPanel
+                    key={activeTab.id}
                     projectId={currentProject.id}
                     command={currentProject.devServerCommand}
                     port={currentProject.devServerPort}
-                    workingDir={currentProject.workingDir}
+                    workingDir={activeTab.workingDir}
                   />
-                )}
-
-                {/* Orphan Tabs */}
-                {activeTab && activeTab.sessionType === 'orphan' && (
+                );
+              } else {
+                // Regular terminal tab
+                return (
                   <ProjectTerminalView
+                    key={activeTab.id}
                     projectId={currentProject.id}
                     sessionType="orphan"
-                    workingDir={currentProject.workingDir}
+                    workingDir={activeTab.workingDir}
                     orphanTabId={activeTab.id}
                   />
-                )}
-              </>
+                );
+              }
+            })()}
+            
+            {/* Legacy support for orphan tabs from sessionStore */}
+            {!activeDynamicTabId && activeTab && activeTab.sessionType === 'orphan' && (
+              <ProjectTerminalView
+                key={activeTab.id}
+                projectId={currentProject.id}
+                sessionType="orphan"
+                workingDir={currentProject.workingDir}
+                orphanTabId={activeTab.id}
+              />
             )}
           </div>
         </div>

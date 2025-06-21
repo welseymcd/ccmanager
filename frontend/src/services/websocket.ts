@@ -72,7 +72,11 @@ export class WebSocketClient extends EventEmitter {
       console.log('[WebSocket] Auth token present:', !!this.authToken);
       
       // Use relative URL for Socket.IO to work with proxy
-      this.socket = io('/', {
+      // If proxy isn't working, you can temporarily use direct URL: 'http://localhost:3010'
+      // Try direct connection to debug WebSocket issues
+      const socketUrl = window.location.hostname === 'localhost' ? 'http://localhost:3010' : '/';
+      console.log('[WebSocket] Connecting to:', socketUrl);
+      this.socket = io(socketUrl, {
         auth: { token: this.authToken },
         reconnection: true,
         reconnectionDelay: 1000,

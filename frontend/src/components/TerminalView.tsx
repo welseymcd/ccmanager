@@ -40,19 +40,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
     const { sendTerminalData, subscribeToSession, unsubscribeFromSession, client, isConnected } = useWebSocket();
     const [, setIsInitialized] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
-    const [mobileDebug, setMobileDebug] = useState<string[]>([]);
-    const [debugVisible, setDebugVisible] = useState(true);
 
-    // Helper to add mobile debug messages
-    const addMobileDebug = useCallback((msg: string) => {
-      // Add timestamp to each message
-      const now = new Date();
-      const timestamp = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
-      const msgWithTime = `[${timestamp}] ${msg}`;
-      setMobileDebug(prev => [...prev.slice(-9), msgWithTime]);  // Keep last 10 messages
-      // Don't call addLog to avoid dependency loop
-      console.log(`[TerminalView] ${msg}`);
-    }, []); // No dependencies to prevent infinite loop
 
     // Detect mobile device (run only once on mount)
     useEffect(() => {
@@ -84,7 +72,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
     useEffect(() => {
       if (initialBuffer && terminalRef.current && !terminalRef.current.element?.hasAttribute('data-buffer-written')) {
         try {
-          addMobileDebug(`Writing initial buffer to terminal: ${initialBuffer.length} bytes`);
+          console.log(`Writing initial buffer to terminal: ${initialBuffer.length} bytes`);
           terminalRef.current.write(initialBuffer);
           // Mark that we've written the buffer to avoid duplicate writes
           terminalRef.current.element?.setAttribute('data-buffer-written', 'true');
@@ -92,7 +80,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
           console.error('Error writing initial buffer:', e);
         }
       }
-    }, [initialBuffer, addMobileDebug]);
+    }, [initialBuffer]);
 
     // Initialize terminal
     useEffect(() => {
@@ -149,7 +137,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
 
       // Log terminal creation
       const debugMsg = `Creating terminal - sessionId: ${sessionId}`;
-      addMobileDebug(debugMsg);
+      console.log(debugMsg);
       if (addLog) {
         addLog(`[TerminalView] Creating terminal instance - mobile: ${isMobile}, sessionId: ${sessionId}`);
       }
@@ -289,7 +277,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
       
       // Create a local debug function for this terminal instance
       const terminalAddMobileDebug = (msg: string) => {
-        addMobileDebug(msg);
+        console.log(msg);
       };
       
       // CRITICAL: Set up input handling after opening
@@ -558,8 +546,8 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
       // Get WebSocket client - prefer hook client, fallback to window client
       const wsClient = client || (window as any).__webSocketClient;
       if (wsClient) {
-        // Remove any existing listeners first to avoid duplicates
-        wsClient.removeAllListeners('terminal_output');
+        // Don't remove all listeners - just add our listener
+        // Each terminal instance will filter messages by sessionId
         wsClient.on('terminal_output', handleTerminalOutput);
         terminalAddMobileDebug(`Attached terminal_output listener (${client ? 'hook' : 'window'} client)`);
       } else {
@@ -859,15 +847,15 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
 
     // Virtual keyboard button handlers
     const handleVirtualKey = useCallback((key: string) => {
-      addMobileDebug(`VKey: ${key}`);
+      console.log(`VKey: ${key}`);
       
       if (!sessionId) {
-        addMobileDebug(`No session ID`);
+        console.log(`No session ID`);
         return;
       }
 
       if (!terminalRef.current) {
-        addMobileDebug(`No terminal ref`);
+        console.log(`No terminal ref`);
         return;
       }
 
@@ -898,11 +886,11 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
           data = '\r';
           break;
         default:
-          addMobileDebug(`Unknown key: ${key}`);
+          console.log(`Unknown key: ${key}`);
           return;
       }
 
-      addMobileDebug(`VKey data: ${JSON.stringify(data)}`);
+      console.log(`VKey data: ${JSON.stringify(data)}`);
 
       try {
         // For arrow keys and control characters, don't write directly to terminal
@@ -916,92 +904,30 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
         
         // Always send to backend
         sendTerminalData(sessionId, data);
-        addMobileDebug(`VKey sent: ${key}`);
+        console.log(`VKey sent: ${key}`);
         
         // Keep terminal focused
         terminalRef.current.focus();
       } catch (error) {
-        addMobileDebug(`VKey error: ${error}`);
+        console.log(`VKey error: ${error}`);
       }
-    }, [sessionId, sendTerminalData, addMobileDebug]); // Added addMobileDebug dependency
+    }, [sessionId, sendTerminalData]);
 
     // Test function to manually trigger terminal output
     useEffect(() => {
       (window as any).testTerminalOutput = (data: string) => {
         if (terminalRef.current && sessionId) {
-          addMobileDebug(`TEST: Writing "${data}" to terminal`);
+          console.log(`TEST: Writing "${data}" to terminal`);
           terminalRef.current.write(data);
         }
       };
       return () => {
         delete (window as any).testTerminalOutput;
       };
-    }, [sessionId, addMobileDebug]);
-
-    // Use the memoized addMobileDebug from above
+    }, [sessionId]);
 
     return (
       <div className="h-full w-full bg-black relative flex flex-col" style={{ overflow: 'hidden', minHeight: '100px' }}>
-        {/* Debug Panel - Compact corner version with hide/show toggle */}
-        {mobileDebug.length > 0 && (
-          <div className="absolute bottom-4 right-4 bg-gray-900 bg-opacity-95 z-40 border border-gray-700 rounded shadow-lg">
-            {debugVisible ? (
-              // Full debug panel when visible
-              <div className="p-2 text-xs text-gray-300 max-h-32 max-w-sm overflow-y-auto">
-                <div className="flex justify-between items-center mb-1">
-                  <div className="font-bold text-yellow-400 text-xs">Debug:</div>
-                  <div className="flex gap-1">
-                    <button 
-                      onClick={() => setDebugVisible(false)}
-                      className="text-gray-400 hover:text-gray-300 text-xs px-1"
-                      title="Hide debug panel"
-                    >
-                      –
-                    </button>
-                    <button 
-                      onClick={() => setMobileDebug([])}
-                      className="text-red-400 hover:text-red-300 text-xs px-1"
-                      title="Clear debug messages"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-                <div className="space-y-0.5">
-                  {mobileDebug.slice(-5).map((msg, i) => {
-                    // Color code different message types
-                    let className = "font-mono text-xs ";
-                    if (msg.includes('[WebSocket]')) {
-                      className += "text-blue-300";
-                    } else if (msg.includes('✓')) {
-                      className += "text-green-400";
-                    } else if (msg.includes('✗')) {
-                      className += "text-red-400";
-                    } else if (msg.includes('Output')) {
-                      className += "text-purple-400";
-                    } else if (msg.includes('Sent')) {
-                      className += "text-yellow-400";
-                    } else {
-                      className += "text-gray-400";
-                    }
-                    return <div key={i} className={className}>{msg}</div>;
-                  })}
-                </div>
-              </div>
-            ) : (
-              // Minimized debug indicator when hidden
-              <div className="p-1">
-                <button 
-                  onClick={() => setDebugVisible(true)}
-                  className="text-yellow-400 hover:text-yellow-300 text-xs px-2 py-1 rounded"
-                  title="Show debug panel"
-                >
-                  🐛 {mobileDebug.length}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
         {(status === 'disconnected' || status === 'error') && (
           <div className="flex items-center justify-center h-full text-white">
             <div className="text-center">
@@ -1056,7 +982,7 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
               addLog(`[TerminalView] Terminal clicked, status: ${status}, has term ref: ${!!terminalRef.current}`);
             }
             if (!terminalRef.current) {
-              addMobileDebug(`Terminal ref not available`);
+              console.log(`Terminal ref not available`);
               return;
             }
             if (terminalRef.current) {
@@ -1065,28 +991,28 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
               const textarea = terminalContainerRef.current?.querySelector('textarea');
               if (textarea) {
                 (textarea as HTMLTextAreaElement).focus();
-                addMobileDebug(`Textarea focused`);
+                console.log(`Textarea focused`);
                 
                 // Test if we can capture input
                 setTimeout(() => {
                   const testInput = document.activeElement;
-                  addMobileDebug(`Active element: ${testInput?.tagName} ${testInput?.className}`);
+                  console.log(`Active element: ${testInput?.tagName} ${testInput?.className}`);
                   if (testInput && testInput.tagName === 'TEXTAREA') {
-                    addMobileDebug(`✓ Textarea is active, keyboard should work`);
+                    console.log(`✓ Textarea is active, keyboard should work`);
                     // Check WebSocket status
                     const wsConnected = client?.isConnected() || false;
-                    addMobileDebug(`WebSocket connected: ${wsConnected}`);
+                    console.log(`WebSocket connected: ${wsConnected}`);
                     if (!wsConnected) {
-                      addMobileDebug(`✗ WebSocket disconnected!`);
+                      console.log(`✗ WebSocket disconnected!`);
                     }
                   } else {
-                    addMobileDebug(`✗ Wrong element focused`);
+                    console.log(`✗ Wrong element focused`);
                   }
                 }, 50);
               }
               // Check if terminal has focus
               const hasFocus = document.activeElement === textarea;
-              addMobileDebug(`Has focus: ${hasFocus}`);
+              console.log(`Has focus: ${hasFocus}`);
             }
             // Don't auto-show keyboard on mobile, let user toggle it
           }}
@@ -1156,13 +1082,13 @@ export const TerminalView = forwardRef<TerminalHandle, TerminalViewProps>(
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  addMobileDebug('TAB clicked');
+                  console.log('TAB clicked');
                   handleVirtualKey('Tab');
                 }}
                 onTouchEnd={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  addMobileDebug('TAB touched');
+                  console.log('TAB touched');
                   handleVirtualKey('Tab');
                 }}
                 className="px-3 py-3 bg-gray-700 hover:bg-gray-600 active:bg-gray-500 text-white text-sm font-medium rounded transition-colors touch-target select-none cursor-pointer"
